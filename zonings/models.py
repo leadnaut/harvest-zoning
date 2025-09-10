@@ -4,46 +4,33 @@ from typing import Optional
 
 import numpy as np
 
-from zonings.utils import subsequence_sums
+from zonings.utils import subsequence_sums, calculate_axis_sums
 
 
-@dataclass(frozen=True)
+
 class Field:
-    height: int
-    width: int
-    field_map: list[list[int]]
-    yield_map: list[list[float]]
-    gpc_map: list[list[float]]
-
-    def __post_init__(self) -> None:
-        print("Initializing Field")
-        self.field_row_sum
-        self.field_col_sum
-        print("Finished Initializing Field")
-
-    @cached_property
-    def field_row_sum(self) -> dict[tuple[int, int, int], int]:
-        """
-        field_row_sum[y,x1,x2] returns the number of field pixels on row y between
-        x1 (inclusive) and x2 (inclusive).
-        """
-        lookup = {}
-        for y in range(self.height):
-            sums = subsequence_sums(self.field_map[y])
-            lookup.update(((y, *k), sums[k]) for k in sums)
-        return lookup
+    def __init__(self, field_id: str, height: int, width: int, field_map: list[list[int]], yield_map: list[list[float]], gpc_map: list[list[float]]) -> None:
+        self.field_id = field_id
+        self.height = height
+        self.width = width
+        self.field_map = field_map
+        self.yield_map = yield_map
+        self.gpc_map = gpc_map
+        
+        print(f"intializing field {field_id}")
+        self.field_row_sums = calculate_axis_sums(self.field_map)
+        self.field_col_sums = calculate_axis_sums(self.field_map, rows=False)
+        self.yield_row_sums = calculate_axis_sums(self.yield_map)
+        self.yield_col_sums = calculate_axis_sums(self.yield_map, rows=False)
+        self.protein_row_sums = calculate_axis_sums(np.asarray(self.yield_map) * np.asarray(self.gpc_map).tolist())
+        print(f"finished intializing field {field_id}")
 
     @cached_property
-    def field_col_sum(self) -> dict[tuple[int, int, int], int]:
-        field_transpose = np.asarray(self.field_map).transpose().tolist()
-        lookup = {}
-        for x in range(self.width):
-            sums = subsequence_sums(field_transpose[x])
-            lookup.update(((x, *k), sums[k]) for k in sums)
-        return lookup
+    def _protein_total_map(self) -> list[list[float]]:
+        return (np.asarray(self.yield_map) * np.asarray(self.gpc_map)).tolist()
 
     def pixels_in_box(self, x1, y1, x2, y2) -> int:
-        return sum(self.field_row_sum[y, x1, x2] for y in range(y1, y2))
+        return sum(self.field_row_sums[y, x1, x2] for y in range(y1, y2+1))
 
 
 @dataclass(frozen=True)

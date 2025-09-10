@@ -23,3 +23,14 @@ def subsequence_sums(sequence: list[Summable]) -> dict[tuple[int, int], Summable
         for x1 in range(seq_len)
         for x2 in range(x1, seq_len)
     }
+
+
+def calculate_axis_sums(grid: list[list[Summable]], rows=True) -> dict[tuple[int, int, int], Summable]:
+    if not rows:
+        grid = np.asarray(grid).transpose().tolist()
+    
+    lookup = {}
+    for i in range(len(grid)):
+        sums = subsequence_sums(grid[i])
+        lookup.update(((i, *k), sums[k]) for k in sums)
+    return lookup

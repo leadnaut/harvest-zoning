@@ -10,8 +10,8 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
         (x1, y1, x2, y2)
         for x1 in range(field.width)
         for y1 in range(field.height)
-        for x2 in range(x1 + config.minimum_width, field.width)
-        for y2 in range(y1 + config.minimum_height, field.height)
+        for x2 in range(x1 + config.minimum_width-1, field.width)
+        for y2 in range(y1 + config.minimum_height-1, field.height)
         if (
             x2 - x1 >= config.minimum_width
             and y2 - y1 >= config.minimum_height
@@ -21,9 +21,16 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
             )
         )
     ]
-    print("Starting Scoring")
+    nboxes = len(boxes)
+    print(f"Starting Scoring {nboxes} Boxes")
     blender = Blender(field, config.pricing)
     with Pool(8) as pool:
-        zones = pool.map(blender, boxes)
+        zpool = pool.imap_unordered(blender, boxes, chunksize=nboxes//8)
+        for i, _ in enumerate(zpool):
+            if i % 100 != 0:
+                continue
+            print(f"done {i/nboxes * 100 :.2f}%", end="\r")
+        print('')
+        zones = list(zpool)
 
     return zones
