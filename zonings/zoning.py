@@ -1,6 +1,7 @@
-from zonings.models import Field, ZoningConfig, Zone
-from zonings.scoring import Blender
 from multiprocessing import Pool
+
+from zonings.models import Field, Zone, ZoningConfig
+from zonings.scoring import Blender
 
 
 def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
@@ -21,9 +22,8 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
         )
     ]
     print("Starting Scoring")
-    blender = Blender(field)
+    blender = Blender(field, config.pricing)
     with Pool(8) as pool:
         zones = pool.map(blender, boxes)
 
     return zones
-    

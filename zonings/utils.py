@@ -1,20 +1,17 @@
 from typing import TypeVar
+
 import numpy as np
 
 Summable = TypeVar("Summable", float, int)
 
 
-def subsequence_sums(
-    sequence: list[Summable]
-) -> dict[tuple[int, int], Summable]:
+def subsequence_sums(sequence: list[Summable]) -> dict[tuple[int, int], Summable]:
     """ calculates the sums of all possible subsequences of an array and returns a
     lookup dictionary where lookup[i, j] is the sum of elements between indices
     i and j inclusive"""
     seq_len = len(sequence)
     sums: list[np.ndarray] = [
-        np.asarray(
-            [sum(sequence[x] for x in range(x2 + 1)) for x2 in range(seq_len)]
-        )
+        np.asarray([sum(sequence[x] for x in range(x2 + 1)) for x2 in range(seq_len)])
     ]
     prev_x1 = sequence[0]
     for x1 in range(1, seq_len):
