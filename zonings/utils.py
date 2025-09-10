@@ -1,5 +1,4 @@
 from typing import TypeVar
-
 import numpy as np
 
 Summable = TypeVar("Summable", float, int)
