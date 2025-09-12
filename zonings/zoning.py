@@ -29,8 +29,8 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
         for i, _ in enumerate(zpool):
             if i % 100 != 0:
                 continue
-            print(f"done {i/nboxes * 100 :.2f}%", end="\r")
-        print("")
+            print(f"Progress: {i/nboxes * 100 :.2f}%", end="\r")
+        print("\nDone!")
         zones = list(zpool)
 
     return zones
