@@ -1,4 +1,5 @@
 import rasterio
+from rasterio.errors import RasterioIOError
 from geopy.distance import geodesic  # type: ignore
 
 from zonings.constants import (
@@ -29,7 +30,7 @@ def load_field(slug: str) -> Field:
             )
             yield_array: NDArray = yield_data.read(1)
             field_map = yield_array > 0.0001
-    except FileNotFoundError:
+    except (FileNotFoundError, RasterioIOError):
         print(f"Couldn't find yield file (looked for {yield_file_path})")
         quit()
 
@@ -46,8 +47,8 @@ def load_field(slug: str) -> Field:
                 print(
                     f"Difference between yield and protein map pixel lengths is {abs(y_pixel_length - p_pixel_length)}"
                 )
-            protein_array: NDArray = protein_data.read(1).tolist()
-    except FileNotFoundError:
+            protein_array: NDArray = protein_data.read(1)
+    except (FileNotFoundError,RasterioIOError):
         print(f"Couldn't find protein file (looked for {protein_file_path})")
         quit()
 
@@ -55,6 +56,7 @@ def load_field(slug: str) -> Field:
         field_id=slug,
         height=yield_data.height,
         width=yield_data.width,
+        pixel_area=y_pixel_length * y_pixel_length,
         field_map=field_map.tolist(),
         yield_map=yield_array.tolist(),
         gpc_map=protein_array.tolist(),

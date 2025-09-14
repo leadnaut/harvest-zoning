@@ -14,6 +14,7 @@ class Field:
     field_id: str
     height: int
     width: int
+    pixel_area: float
     field_map: list[list[int]]
     yield_map: list[list[float]]
     gpc_map: list[list[float]]
