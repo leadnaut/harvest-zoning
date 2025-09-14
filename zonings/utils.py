@@ -2,6 +2,8 @@ from typing import TypeVar
 
 import numpy as np
 
+from zonings.constants import NDArray
+
 Summable = TypeVar("Summable", float, int)
 
 
@@ -30,12 +32,13 @@ def subsequence_sums(
 
 
 def calculate_axis_sums(
-    grid: list[list[Summable]], rows=True
+    grid: NDArray, rows=True
 ) -> dict[tuple[int, int, int], Summable]:
     if not rows:
-        grid = np.asarray(grid).transpose().tolist()
-
-    lookup = {}
+        grid = grid.transpose().tolist()
+    else:
+        grid = grid.tolist()
+    lookup: dict[tuple[int, int, int], Summable] = {}
     for i in range(len(grid)):
         sums = subsequence_sums(grid[i])
         lookup.update(((i, *k), sums[k]) for k in sums)

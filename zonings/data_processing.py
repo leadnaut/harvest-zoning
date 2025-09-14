@@ -1,6 +1,9 @@
-import rasterio
-from rasterio.errors import RasterioIOError
-from geopy.distance import geodesic  # type: ignore
+from math import ceil
+
+import numpy as np
+import rasterio #type: ignore
+from geopy.distance import geodesic #type: ignore
+from rasterio.errors import RasterioIOError #type: ignore
 
 from zonings.constants import (
     MAP_PIXEL_TOL_KM,
@@ -9,13 +12,42 @@ from zonings.constants import (
     NDArray,
 )
 from zonings.models import Field
+from zonings.visualisations import view_map
 
 
-def _merge_pixels(map: NDArray, bound_map: NDArray, edge_size: int):
-    pass
+def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
+    """
+    averages merge_size x merge_size squares in the values array. the mask array
+    controls what pixels are counted in the averaging
+    """
+    merged_shape = tuple(ceil(s / merge_size) for s in values.shape)
+    pad_tuple = tuple(
+        (0, merged_shape[i] * merge_size - values.shape[i])
+        for i in range(len(merged_shape))
+    )
+    padded_values = np.pad(values, pad_tuple, mode="constant")
+    padded_bounds = np.pad(mask, pad_tuple, mode="constant")
+    sums = sum(
+        (
+            padded_values[i::merge_size, j::merge_size]
+            for i in range(merge_size)
+            for j in range(merge_size)
+        ),
+        start=np.zeros(merged_shape),
+    )
+    counts = sum(
+        (
+            padded_bounds[i::merge_size, j::merge_size]
+            for i in range(merge_size)
+            for j in range(merge_size)
+        ),
+        start=np.zeros(merged_shape),
+    )
+
+    return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
 
 
-def load_field(slug: str) -> Field:
+def load_field(slug: str, merge_size: int) -> Field:
     yield_file_path = YIELD_FILE_PATH_FORMAT.format(slug=slug)
     protein_file_path = PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
 
@@ -29,7 +61,7 @@ def load_field(slug: str) -> Field:
                 / yield_data.width
             )
             yield_array: NDArray = yield_data.read(1)
-            field_map = yield_array > 0.0001
+            field_map = yield_array > 0.001
     except (FileNotFoundError, RasterioIOError):
         print(f"Couldn't find yield file (looked for {yield_file_path})")
         quit()
@@ -48,18 +80,22 @@ def load_field(slug: str) -> Field:
                     f"Difference between yield and protein map pixel lengths is {abs(y_pixel_length - p_pixel_length)}"
                 )
             protein_array: NDArray = protein_data.read(1)
-    except (FileNotFoundError,RasterioIOError):
+    except (FileNotFoundError, RasterioIOError):
         print(f"Couldn't find protein file (looked for {protein_file_path})")
         quit()
+
+    merged_yield = _average_pixels(yield_array, field_map, merge_size)
+    merged_protein = _average_pixels(protein_array, field_map, merge_size)
+    merged_pixel_size = y_pixel_length * merge_size
 
     return Field(
         field_id=slug,
         height=yield_data.height,
         width=yield_data.width,
-        pixel_area=y_pixel_length * y_pixel_length,
-        field_map=field_map.tolist(),
-        yield_map=yield_array.tolist(),
-        gpc_map=protein_array.tolist(),
+        pixel_area=merged_pixel_size**2,
+        field_map=merged_yield > 0.001,
+        yield_map=merged_yield,
+        gpc_map=merged_protein/100,
         coordinates=(
             (yield_data.bounds.top + yield_data.bounds.bottom) / 2,
             (yield_data.bounds.left + yield_data.bounds.right) / 2,

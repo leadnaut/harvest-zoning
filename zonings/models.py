@@ -4,6 +4,7 @@ from typing import Optional
 
 import numpy as np
 
+from zonings.constants import NDArray
 from zonings.utils import Summable, calculate_axis_sums
 
 FieldSumLookup = dict[tuple[int, int, int], Summable]
@@ -15,9 +16,9 @@ class Field:
     height: int
     width: int
     pixel_area: float
-    field_map: list[list[int]]
-    yield_map: list[list[float]]
-    gpc_map: list[list[float]]
+    field_map: NDArray
+    yield_map: NDArray
+    gpc_map: NDArray
     coordinates: Optional[tuple[float, float]] = None
 
     field_row_sums: FieldSumLookup = field(init=False)
@@ -33,7 +34,7 @@ class Field:
         self.yield_row_sums = calculate_axis_sums(self.yield_map)
         self.yield_col_sums = calculate_axis_sums(self.yield_map, rows=False)
         self.protein_row_sums = calculate_axis_sums(
-            np.asarray(self.yield_map) * np.asarray(self.gpc_map).tolist()
+            self.yield_map * self.gpc_map
         )
         print(f"finished intializing field {self.field_id}")
 
