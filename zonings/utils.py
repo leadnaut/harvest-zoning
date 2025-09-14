@@ -6,9 +6,9 @@ Summable = TypeVar("Summable", float, int)
 
 
 def subsequence_sums(
-    sequence: list[Summable]
+    sequence: list[Summable],
 ) -> dict[tuple[int, int], Summable]:
-    """ calculates the sums of all possible subsequences of an array and returns a
+    """calculates the sums of all possible subsequences of an array and returns a
     lookup dictionary where lookup[i, j] is the sum of elements between indices
     i and j inclusive"""
     seq_len = len(sequence)

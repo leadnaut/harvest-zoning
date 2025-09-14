@@ -4,27 +4,29 @@ from typing import Optional
 
 import numpy as np
 
-from zonings.utils import calculate_axis_sums, subsequence_sums
+from zonings.utils import Summable, calculate_axis_sums
+
+FieldSumLookup = dict[tuple[int, int, int], Summable]
 
 
+@dataclass
 class Field:
-    def __init__(
-        self,
-        field_id: str,
-        height: int,
-        width: int,
-        field_map: list[list[int]],
-        yield_map: list[list[float]],
-        gpc_map: list[list[float]],
-    ) -> None:
-        self.field_id = field_id
-        self.height = height
-        self.width = width
-        self.field_map = field_map
-        self.yield_map = yield_map
-        self.gpc_map = gpc_map
+    field_id: str
+    height: int
+    width: int
+    field_map: list[list[int]]
+    yield_map: list[list[float]]
+    gpc_map: list[list[float]]
+    coordinates: Optional[tuple[float, float]] = None
 
-        print(f"intializing field {field_id}")
+    field_row_sums: FieldSumLookup = field(init=False)
+    field_col_sums: FieldSumLookup = field(init=False)
+    yield_row_sums: FieldSumLookup = field(init=False)
+    yield_col_sums: FieldSumLookup = field(init=False)
+    protein_row_sums: FieldSumLookup = field(init=False)
+
+    def __post_init__(self):
+        print(f"intializing field {self.field_id}")
         self.field_row_sums = calculate_axis_sums(self.field_map)
         self.field_col_sums = calculate_axis_sums(self.field_map, rows=False)
         self.yield_row_sums = calculate_axis_sums(self.yield_map)
@@ -32,7 +34,7 @@ class Field:
         self.protein_row_sums = calculate_axis_sums(
             np.asarray(self.yield_map) * np.asarray(self.gpc_map).tolist()
         )
-        print(f"finished intializing field {field_id}")
+        print(f"finished intializing field {self.field_id}")
 
     @cached_property
     def _protein_total_map(self) -> list[list[float]]:
@@ -57,7 +59,7 @@ class PriceInfo:
     price_per_tonnes: list[float]
 
     def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
-        for (protein, price) in zip(
+        for protein, price in zip(
             self.protein_minimums[::-1], self.price_per_tonnes[::-1]
         ):
             if gpc > protein:

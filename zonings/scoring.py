@@ -18,5 +18,5 @@ class Blender:
             *box,
             self.price_info.calculate_price(
                 total_protein / total_yield, total_yield
-            )
+            ),
         )

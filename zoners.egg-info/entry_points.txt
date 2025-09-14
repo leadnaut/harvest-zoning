@@ -1,0 +1,2 @@
+[console_scripts]
+zoner = zonings.cli:cli

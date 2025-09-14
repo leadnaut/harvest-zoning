@@ -1,0 +1,23 @@
+[project]
+name="zoners"
+version = "0.0.1"
+
+[project.scripts]
+zoner = "zonings.cli:cli"
+
+
+[tool.ruff]
+line-length = 80
+
+
+[tool.ruff.lint]
+ignore = ["F841"] # unused local variable
+extend-select = ["I"]
+
+
+[tool.ruff.format]
+quote-style = "double"
+
+
+[tool.setuptools]
+packages = ["zonings"]
