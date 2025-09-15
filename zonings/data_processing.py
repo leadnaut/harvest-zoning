@@ -1,18 +1,19 @@
 from math import ceil
 
 import numpy as np
-import rasterio #type: ignore
-from geopy.distance import geodesic #type: ignore
-from rasterio.errors import RasterioIOError #type: ignore
+import rasterio  # type: ignore
+from geopy.distance import geodesic  # type: ignore
+from rasterio.errors import RasterioIOError  # type: ignore
 
 from zonings.constants import (
+    KM2_TO_HA,
     MAP_PIXEL_TOL_KM,
     PROTEIN_FILE_PATH_FORMAT,
     YIELD_FILE_PATH_FORMAT,
     NDArray,
 )
 from zonings.models import Field
-from zonings.visualisations import view_map
+from zonings.utils import no_numpy
 
 
 def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
@@ -61,6 +62,7 @@ def load_field(slug: str, merge_size: int) -> Field:
                 / yield_data.width
             )
             yield_array: NDArray = yield_data.read(1)
+            yield_array *= y_pixel_length**2 * KM2_TO_HA
             field_map = yield_array > 0.001
     except (FileNotFoundError, RasterioIOError):
         print(f"Couldn't find yield file (looked for {yield_file_path})")
@@ -93,9 +95,9 @@ def load_field(slug: str, merge_size: int) -> Field:
         height=yield_data.height,
         width=yield_data.width,
         pixel_area=merged_pixel_size**2,
-        field_map=merged_yield > 0.001,
-        yield_map=merged_yield,
-        gpc_map=merged_protein/100,
+        field_map=no_numpy(merged_yield > 0.001),
+        yield_map=no_numpy(merged_yield),
+        gpc_map=no_numpy(merged_protein / 100),
         coordinates=(
             (yield_data.bounds.top + yield_data.bounds.bottom) / 2,
             (yield_data.bounds.left + yield_data.bounds.right) / 2,
