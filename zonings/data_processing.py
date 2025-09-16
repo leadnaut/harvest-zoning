@@ -92,8 +92,8 @@ def load_field(slug: str, merge_size: int) -> Field:
 
     return Field(
         field_id=slug,
-        height=yield_data.height,
-        width=yield_data.width,
+        height=merged_yield.shape[0],
+        width=merged_yield.shape[1],
         pixel_area=merged_pixel_size**2,
         field_map=no_numpy(merged_yield > 0.001),
         yield_map=no_numpy(merged_yield),

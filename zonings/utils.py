@@ -47,7 +47,7 @@ def calculate_axis_sums(
     lookup: dict[tuple[int, int, int], NumberT] = {}
     for i in range(len(grid)):
         sums = subsequence_sums(grid[i])
-        lookup.update(((i, *k), sums[k]) for k in sums)  # type: ignore
+        lookup.update(((i, *k), sums[k]) for k in sums)
 
     return lookup
 

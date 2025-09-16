@@ -42,10 +42,7 @@ class Field:
 
 @dataclass(frozen=True)
 class Zone:
-    x1: int
-    y1: int
-    x2: int
-    y2: int
+    box: Box
     score: float
 
 

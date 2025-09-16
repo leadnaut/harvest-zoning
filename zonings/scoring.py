@@ -1,3 +1,4 @@
+from zonings.constants import Box
 from zonings.models import Field, PriceInfo, Zone
 
 
@@ -6,16 +7,11 @@ class Blender:
         self.field = field
         self.price_info = price_info
 
-    def __call__(self, box: tuple[int, int, int, int]) -> Zone:
-        x1, y1, x2, y2 = box
-        total_yield = sum(
-            self.field.yield_row_sums[y, x1, x2] for y in range(y1, y2 + 1)
-        )
-        total_protein = sum(
-            self.field.protein_row_sums[y, x1, x2] for y in range(y1, y2 + 1)
-        )
+    def __call__(self, box: Box) -> Zone:
+        total_yield = self.field.yield_box_sums[box]
+        total_protein = self.field.protein_box_sums[box]
         return Zone(
-            *box,
+            box,
             self.price_info.calculate_price(
                 total_protein / total_yield, total_yield
             ),
