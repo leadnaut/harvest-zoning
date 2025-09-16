@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from heapq import heappush, heapreplace
-from typing import Any
 from time import time
+from typing import Any
 
 import gurobipy as gp
 
@@ -125,9 +125,9 @@ class ZoneSolver:
             [z for z in self.X if self.X[z].X > 0.01],
             self.model.ObjVal,
             SolveInfo(
-                total_solve_seconds=solve_end_t-solve_start_t,
-                column_generation_seconds=cg_end_t-solve_start_t,
+                total_solve_seconds=solve_end_t - solve_start_t,
+                column_generation_seconds=cg_end_t - solve_start_t,
                 column_generation_iterations=cg_iterations,
-                total_variables=len(self.X)
-            )
+                total_variables=len(self.X),
+            ),
         )

@@ -1,13 +1,11 @@
-from pathlib import Path
-import click
 import io
+from pathlib import Path
+
+import click
 
 from zonings.data_processing import load_field
-from zonings.models import PriceInfo, SolverConfig, ZoningConfig
 from zonings.pipelines import zone_field_pipeline
-from zonings.solver import ZoneSolver
 from zonings.utils import calculate_box_sums
-from zonings.zoning import make_zones
 
 
 @click.group
@@ -30,7 +28,9 @@ def zone_field(field_slug: str, output: Path):
 
 @cli.command()
 @click.argument("field_list", type=click.File())
-@click.argument("output_dir", type=click.Path(exists=True, writable=True, path_type=Path))
+@click.argument(
+    "output_dir", type=click.Path(exists=True, writable=True, path_type=Path)
+)
 def zone_batch(field_list: io.TextIOWrapper, output_dir: Path):
     for slug in field_list:
         zone_field_pipeline(slug.strip(), output_dir)

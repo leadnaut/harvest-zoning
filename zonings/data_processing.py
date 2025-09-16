@@ -65,8 +65,9 @@ def load_field(slug: str, merge_size: int) -> Field:
             yield_array *= y_pixel_length**2 * KM2_TO_HA
             field_map = yield_array > 0.001
     except (FileNotFoundError, RasterioIOError):
-        print(f"Couldn't find yield file (looked for {yield_file_path})")
-        quit()
+        raise FileNotFoundError(
+            f"Couldn't find yield file (looked for {yield_file_path})"
+        )
 
     try:
         with rasterio.open(protein_file_path) as protein_data:
@@ -83,8 +84,9 @@ def load_field(slug: str, merge_size: int) -> Field:
                 )
             protein_array: NDArray = protein_data.read(1)
     except (FileNotFoundError, RasterioIOError):
-        print(f"Couldn't find protein file (looked for {protein_file_path})")
-        quit()
+        raise FileNotFoundError(
+            f"Couldn't find protein file (looked for {protein_file_path})"
+        )
 
     merged_yield = _average_pixels(yield_array, field_map, merge_size)
     merged_protein = _average_pixels(protein_array, field_map, merge_size)
