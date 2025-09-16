@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Optional
+from typing import Generator, Optional
 
 import numpy as np
 
@@ -45,6 +45,17 @@ class Zone:
     box: Box
     score: float
 
+    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
+        for x in range(self.box[0][0], self.box[1][0] + 1):
+            for y in range(self.box[0][1], self.box[1][1] + 1):
+                yield (x, y)
+
+
+@dataclass(frozen=True)
+class Solution:
+    zones: list[Zone]
+    revenue: float
+
 
 @dataclass(frozen=True)
 class PriceInfo:
@@ -66,3 +77,10 @@ class ZoningConfig:
     minimum_height: int
     pricing: PriceInfo
     minimum_pixels: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class SolverConfig:
+    max_zones: int
+    max_cg_iterations: int | None = None
+    max_variables_added_per_cg_iteration: int = 500
