@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from heapq import heappush, heapreplace
 from typing import Any
+from time import time
 
 import gurobipy as gp
 
-from zonings.models import Field, Solution, SolverConfig, Zone
+from zonings.models import Field, Solution, SolveInfo, SolverConfig, Zone
 from zonings.utils import calculate_box_sums
 
 
@@ -75,12 +76,10 @@ class ZoneSolver:
 
         # calculate reduced costs of all the zones
         best_zones: list[CGQueueNode] = []
-        rcs = []
         for z in self.all_zones:
             if z in self.model_zones:
                 continue
             reduced_cost = z.score - cover_dual_box_sums[z.box] - limit_dual
-            rcs.append(reduced_cost)
             if reduced_cost > 0.001:
                 if (
                     len(best_zones)
@@ -92,39 +91,43 @@ class ZoneSolver:
                 ):  # better than the smallest rc in queue
                     heapreplace(best_zones, CGQueueNode(reduced_cost, z))
 
-        print(sum(rcs) / len(rcs))
         if len(best_zones) == 0:
             return None
 
         return [i.zone for i in best_zones]
 
-    def get_solution(self) -> Solution:
-        return Solution(
-            revenue=self.model.ObjVal,
-            zones=[z for z in self.X if self.X[z].X > 0.001],
-        )
-
     def solve(self) -> Solution:
         print("Beginning column generation")
-        iteration = 0
+        solve_start_t = time()
+        cg_iterations = 0
         while (
             not self.config.max_cg_iterations
-            or iteration < self.config.max_cg_iterations
+            or cg_iterations < self.config.max_cg_iterations
         ):
             self.model.setParam("OutputFlag", 0)
             self.model.optimize()
-            iteration += 1
+            cg_iterations += 1
             if entering_variables := self.find_entering_variables():
-                print(f"{iteration}: Added {len(entering_variables)}")
+                print(f"{cg_iterations}: Added {len(entering_variables)}")
                 self.add_vars(entering_variables)
                 continue
             break
-
+        cg_end_t = time()
         print(f"Column generation done. {len(self.X)} total variables")
         for k in self.X:
             self.X[k].setAttr("vtype", gp.GRB.BINARY)
 
         self.model.setParam("OutputFlag", 1)
         self.model.optimize()
+        solve_end_t = time()
 
-        return self.get_solution()
+        return Solution(
+            [z for z in self.X if self.X[z].X > 0.01],
+            self.model.ObjVal,
+            SolveInfo(
+                total_solve_seconds=solve_end_t-solve_start_t,
+                column_generation_seconds=cg_end_t-solve_start_t,
+                column_generation_iterations=cg_iterations,
+                total_variables=len(self.X)
+            )
+        )

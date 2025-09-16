@@ -1,7 +1,10 @@
+from pathlib import Path
 import click
+import io
 
 from zonings.data_processing import load_field
 from zonings.models import PriceInfo, SolverConfig, ZoningConfig
+from zonings.pipelines import zone_field_pipeline
 from zonings.solver import ZoneSolver
 from zonings.utils import calculate_box_sums
 from zonings.zoning import make_zones
@@ -20,22 +23,17 @@ def read_field(field_slug: str):
 
 @cli.command()
 @click.argument("field_slug")
-def zone_field(field_slug: str):
-    f = load_field(field_slug, 2)
-    whole_box = ((0, 0), (f.width - 1, f.height - 1))
-    print(f.protein_box_sums[whole_box] / f.yield_box_sums[whole_box])
-    zs = make_zones(
-        f,
-        ZoningConfig(
-            3,
-            3,
-            PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]),
-        ),
-    )
-    print(len(zs))
-    mip = ZoneSolver(field_slug, zs, f, SolverConfig(max_zones=4))
-    sol = mip.solve()
-    print(sol.zones)
+@click.argument("output", type=click.Path(writable=True, path_type=Path))
+def zone_field(field_slug: str, output: Path):
+    zone_field_pipeline(field_slug, output)
+
+
+@cli.command()
+@click.argument("field_list", type=click.File())
+@click.argument("output_dir", type=click.Path(exists=True, writable=True, path_type=Path))
+def zone_batch(field_list: io.TextIOWrapper, output_dir: Path):
+    for slug in field_list:
+        zone_field_pipeline(slug.strip(), output_dir)
 
 
 @cli.command()
