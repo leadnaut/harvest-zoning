@@ -78,7 +78,6 @@ class ZoningConfig:
 
 @dataclass(frozen=True)
 class SolverConfig:
-    max_zones: int
     max_cg_iterations: Optional[int] = None
     max_variables_added_per_cg_iteration: int = 500
     save_solve_info: Optional[bool] = True

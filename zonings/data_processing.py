@@ -54,7 +54,7 @@ def load_field(slug: str, merge_size: int) -> Field:
 
     try:
         with rasterio.open(yield_file_path) as yield_data:
-            y_pixel_length = (
+            y_pixel_length: float = (
                 geodesic(
                     (yield_data.bounds.top, yield_data.bounds.left),
                     (yield_data.bounds.top, yield_data.bounds.right),
@@ -87,6 +87,10 @@ def load_field(slug: str, merge_size: int) -> Field:
         raise FileNotFoundError(
             f"Couldn't find protein file (looked for {protein_file_path})"
         )
+    
+    if yield_array.shape != protein_array.shape: # not the best fix TODO
+        print(f"yield and protein data for {slug} are not equal. Padding protein array")
+        protein_array = np.pad(protein_array, tuple((0,yield_array.shape[i]-protein_array.shape[i]) for i in range(len(yield_array.shape))))
 
     merged_yield = _average_pixels(yield_array, field_map, merge_size)
     merged_protein = _average_pixels(protein_array, field_map, merge_size)

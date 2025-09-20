@@ -25,6 +25,7 @@ class ZoneSolver:
         self,
         solver_id: str,
         zones: list[Zone],
+        max_zones: int,
         field: Field,
         config: SolverConfig,
     ) -> None:
@@ -41,7 +42,7 @@ class ZoneSolver:
 
         # Maximum zones constraints
         self.limit_constraint = self.model.addConstr(
-            gp.LinExpr(0) <= config.max_zones
+            gp.LinExpr(0) <= max_zones
         )
         # No overlapping constraints
         self.overlap_constraints = {
@@ -65,7 +66,7 @@ class ZoneSolver:
                     self.overlap_constraints[x, y], self.X[z], 1
                 )
 
-    def find_entering_variables(self) -> list[Zone] | None:
+    def find_entering_variables(self) -> tuple[list[Zone], int] | None:
         # get dual variables
         limit_dual = self.limit_constraint.Pi
         cover_constraint_dual_grid = [
@@ -76,11 +77,13 @@ class ZoneSolver:
 
         # calculate reduced costs of all the zones
         best_zones: list[CGQueueNode] = []
+        positive_rc_zones = 0
         for z in self.all_zones:
             if z in self.model_zones:
                 continue
             reduced_cost = z.score - cover_dual_box_sums[z.box] - limit_dual
             if reduced_cost > 0.001:
+                positive_rc_zones += 1
                 if (
                     len(best_zones)
                     < self.config.max_variables_added_per_cg_iteration
@@ -93,8 +96,7 @@ class ZoneSolver:
 
         if len(best_zones) == 0:
             return None
-
-        return [i.zone for i in best_zones]
+        return [i.zone for i in best_zones], positive_rc_zones
 
     def solve(self) -> Solution:
         print("Beginning column generation")
@@ -108,8 +110,8 @@ class ZoneSolver:
             self.model.optimize()
             cg_iterations += 1
             if entering_variables := self.find_entering_variables():
-                print(f"{cg_iterations}: Added {len(entering_variables)}")
-                self.add_vars(entering_variables)
+                print(f"{cg_iterations}: Added {len(entering_variables[0])}/{entering_variables[1]}")
+                self.add_vars(entering_variables[0])
                 continue
             break
         cg_end_t = time()

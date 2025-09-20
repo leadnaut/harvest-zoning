@@ -44,8 +44,8 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
     print(f"Starting Scoring {nboxes} Boxes")
     blender = Blender(field, config.pricing)
     zones = []
-    with Pool(8) as pool:
-        zpool = pool.imap_unordered(blender, boxes, chunksize=nboxes // 8)
+    with Pool(6, maxtasksperchild=1000) as pool:
+        zpool = pool.imap_unordered(blender, boxes, chunksize=10000)
         for i, z in enumerate(zpool):
             zones.append(z)
             if i % 100 != 0:

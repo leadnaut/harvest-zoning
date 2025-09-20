@@ -33,6 +33,8 @@ def zone_field(field_slug: str, output: Path):
 )
 def zone_batch(field_list: io.TextIOWrapper, output_dir: Path):
     for slug in field_list:
+        if slug.startswith("#"): # commented out
+            continue
         zone_field_pipeline(slug.strip(), output_dir)
 
 

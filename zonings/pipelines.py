@@ -1,16 +1,24 @@
 import csv
 import os
 from pathlib import Path
+from math import log10, floor
 
 from zonings.data_processing import load_field
 from zonings.models import PriceInfo, SolverConfig, ZoningConfig
 from zonings.solver import ZoneSolver
 from zonings.zoning import make_zones
 
+def _guess_good_solve_parameters(n_zones: int) -> SolverConfig:
+    return SolverConfig(
+        max_variables_added_per_cg_iteration=10**(floor(log10(n_zones)) - 3) * 5
+    )
 
 def zone_field_pipeline(field_slug: str, output_dir: Path) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
+    
+    if (output_dir / f"{field_slug}_kpis.csv").exists():
+        return
 
     try:
         field = load_field(field_slug, 2)
@@ -26,10 +34,11 @@ def zone_field_pipeline(field_slug: str, output_dir: Path) -> None:
             3,
             3,
             pricing,
+            minimum_pixels=int(field.width * field.height * 0.1)
         ),
     )
 
-    mip = ZoneSolver(field_slug, zones, field, SolverConfig(4))
+    mip = ZoneSolver(field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones)))
     sol = mip.solve()
 
     # write outputs:
