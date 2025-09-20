@@ -20,7 +20,7 @@ class CGQueueNode:
         return self.reduced_cost < other.reduced_cost
 
 
-class ZoneSolver:
+class CGMipSolver:
     def __init__(
         self,
         solver_id: str,

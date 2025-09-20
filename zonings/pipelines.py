@@ -5,7 +5,7 @@ from math import log10, floor
 
 from zonings.data_processing import load_field
 from zonings.models import PriceInfo, SolverConfig, ZoningConfig
-from zonings.solver import ZoneSolver
+from zonings.solvers import CGMipSolver
 from zonings.zoning import make_zones
 
 def _guess_good_solve_parameters(n_zones: int) -> SolverConfig:
@@ -38,7 +38,7 @@ def zone_field_pipeline(field_slug: str, output_dir: Path) -> None:
         ),
     )
 
-    mip = ZoneSolver(field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones)))
+    mip = CGMipSolver(field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones)))
     sol = mip.solve()
 
     # write outputs:
