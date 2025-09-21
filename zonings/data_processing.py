@@ -16,6 +16,43 @@ from zonings.models import Field
 from zonings.utils import no_numpy
 
 
+def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
+    """
+    pad a series of arrays so they are all the same shape.
+    """
+    n_arrays = len(arrays)
+    if any(
+        len(arrays[0].shape) != len(arrays[i].shape) for i in range(n_arrays)
+    ):
+        raise ValueError(
+            "Attempted to padqualise arrays of different dimensions"
+        )
+    n_dims = len(arrays[0].shape)
+
+    result = [a for a in arrays]
+    for axis in range(len(arrays[0].shape)):
+        target_size = max(a.shape[axis] for a in arrays)
+
+        for i in range(n_arrays):
+            a = result[i]
+            if a.shape[axis] < target_size:
+                result[i] = np.concat(
+                    [
+                        a,
+                        np.full(
+                            shape=[
+                                target_size - a.shape[i] if i == axis else a.shape[i]
+                                for i in range(n_dims)
+                            ],
+                            fill_value=pad_value
+                        ),
+                    ],
+                    axis=axis,
+                )
+
+    return result
+
+
 def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
     """
     averages merge_size x merge_size squares in the values array. the mask array
@@ -63,7 +100,6 @@ def load_field(slug: str, merge_size: int) -> Field:
             )
             yield_array: NDArray = yield_data.read(1)
             yield_array *= y_pixel_length**2 * KM2_TO_HA
-            field_map = yield_array > 0.001
     except (FileNotFoundError, RasterioIOError):
         raise FileNotFoundError(
             f"Couldn't find yield file (looked for {yield_file_path})"
@@ -88,17 +124,13 @@ def load_field(slug: str, merge_size: int) -> Field:
             f"Couldn't find protein file (looked for {protein_file_path})"
         )
 
-    if yield_array.shape != protein_array.shape:  # not the best fix TODO
+    if yield_array.shape != protein_array.shape:
         print(
-            f"yield and protein data for {slug} are not equal. Padding protein array"
+            f"Yield and protein data for {slug} have different shapes. Normalising"
         )
-        protein_array = np.pad(
-            protein_array,
-            tuple(
-                (0, yield_array.shape[i] - protein_array.shape[i])
-                for i in range(len(yield_array.shape))
-            ),
-        )
+        yield_array, protein_array = pnormalise_arrays(yield_array, protein_array)
+    
+    field_map = yield_array > 0.0001
 
     merged_yield = _average_pixels(yield_array, field_map, merge_size)
     merged_protein = _average_pixels(protein_array, field_map, merge_size)

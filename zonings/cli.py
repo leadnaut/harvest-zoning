@@ -66,4 +66,4 @@ def debug():
         ),
     )
 
-    print(solver.zone_box(Box(0, 0, field.width - 1, field.height - 1), 4))
+    print(solver.solve())

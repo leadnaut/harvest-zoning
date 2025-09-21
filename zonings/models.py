@@ -23,13 +23,13 @@ class Field:
     protein_box_sums: dict[Box, float] = field(init=False)
 
     def __post_init__(self):
-        print(f"intializing field {self.field_id}")
+        print(f"Intializing field {self.field_id}")
         self.field_box_sums = calculate_box_sums(self.field_map)
         self.yield_box_sums = calculate_box_sums(self.yield_map)
         self.protein_box_sums = calculate_box_sums(
             np.multiply(self.yield_map, self.gpc_map).tolist()
         )
-        print(f"finished intializing field {self.field_id}")
+        print(f"Finished intializing field {self.field_id}")
 
     @cached_property
     def _protein_total_map(self) -> list[list[float]]:

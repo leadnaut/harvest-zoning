@@ -150,6 +150,7 @@ class DynamicSolver:
         self.max_zones = max_zones
         self.config = config
         self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
+        self.cache_hits = 0
 
     def _score_box(self, box: Box) -> float:
         box_yield = self.field.yield_box_sums[box]
@@ -166,6 +167,7 @@ class DynamicSolver:
     def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
         if (box, n_zones) in self.lookup:
+            self.cache_hits += 1
             return self.lookup[box, n_zones]
 
         if n_zones == 1:
@@ -183,10 +185,10 @@ class DynamicSolver:
             vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
             split_values.extend(
                 self._combine_solution(
-                    self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1)
+                    self.zone_box(b1, n1), self.zone_box(b2, n_zones - 1 - n1)
                 )
                 for b1, b2 in horizontal_splits + vertical_splits
-                for n1 in range(n_zones - 1)
+                for n1 in range(0, n_zones)
             )
             result = max(
                 split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1]))
@@ -198,9 +200,13 @@ class DynamicSolver:
     def solve(self) -> Solution:
         print("Starting dynamic programming solve")
         tic = time()
+        self.cache_hits = 0
+        self.lookup = {}
         val, boxes = self.zone_box(self.field.bounding_box(), self.max_zones)
         toc = time()
-        print(f"Solve done! Explored {len(self.lookup)} nodes")
+        print(
+            f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits"
+        )
         return Solution(
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
