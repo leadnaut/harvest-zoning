@@ -7,7 +7,7 @@ from zonings.data_processing import load_field
 from zonings.models import PriceInfo, ZoningConfig
 from zonings.pipelines import dynamic_pipeline, mip_pipeline
 from zonings.solvers import DynamicSolver
-from zonings.utils import calculate_box_sums, Box
+from zonings.utils import Box
 
 
 @click.group
@@ -27,11 +27,13 @@ def read_field(field_slug: str):
 def mip_solve_field(field_slug: str, output: Path):
     mip_pipeline(field_slug, output)
 
+
 @cli.command()
 @click.argument("field_slug")
 @click.argument("output", type=click.Path(writable=True, path_type=Path))
-def dynamic_solve_field(field_slug:str, output: Path):
+def dynamic_solve_field(field_slug: str, output: Path):
     dynamic_pipeline(field_slug, output)
+
 
 @cli.command()
 @click.argument("solve_type", type=click.Choice(["mip", "dynamic"]))
@@ -39,9 +41,11 @@ def dynamic_solve_field(field_slug:str, output: Path):
 @click.argument(
     "output_dir", type=click.Path(exists=True, writable=True, path_type=Path)
 )
-def solve_batch(solve_type:str, field_list: io.TextIOWrapper, output_dir: Path):
+def solve_batch(
+    solve_type: str, field_list: io.TextIOWrapper, output_dir: Path
+):
     for slug in field_list:
-        if slug.startswith("#"): # commented out
+        if slug.startswith("#"):  # commented out
             continue
         if solve_type == "mip":
             mip_pipeline(slug.strip(), output_dir)
@@ -52,9 +56,14 @@ def solve_batch(solve_type:str, field_list: io.TextIOWrapper, output_dir: Path):
 @cli.command()
 def debug():
     field = load_field("cy2022_30", 2)
-    solver = DynamicSolver(field, max_zones=4, config=ZoningConfig(3, 3, PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )))
+    solver = DynamicSolver(
+        field,
+        max_zones=4,
+        config=ZoningConfig(
+            3,
+            3,
+            PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]),
+        ),
+    )
 
-    print(solver.zone_box(Box(0,0, field.width-1, field.height-1), 4))
-
+    print(solver.zone_box(Box(0, 0, field.width - 1, field.height - 1), 4))

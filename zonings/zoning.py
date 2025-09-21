@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 
-from zonings.utils import Box
 from zonings.models import Field, PriceInfo, Zone, ZoningConfig
+from zonings.utils import Box
 
 
 class Blender:
@@ -25,7 +25,7 @@ class Blender:
 def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
     print("Creating Boxes")
     boxes = [
-        Box(x1, y1,x2, y2)
+        Box(x1, y1, x2, y2)
         for x1 in range(field.width)
         for y1 in range(field.height)
         for x2 in range(x1 + config.minimum_width - 1, field.width)

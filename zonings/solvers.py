@@ -5,7 +5,14 @@ from typing import Any
 
 import gurobipy as gp
 
-from zonings.models import Field, Solution, SolveInfo, MipConfig, Zone, ZoningConfig
+from zonings.models import (
+    Field,
+    MipConfig,
+    Solution,
+    SolveInfo,
+    Zone,
+    ZoningConfig,
+)
 from zonings.utils import Box, calculate_box_sums
 
 
@@ -41,9 +48,7 @@ class CGMipSolver:
         self.model.setObjective(gp.LinExpr(0), gp.GRB.MAXIMIZE)
 
         # Maximum zones constraints
-        self.limit_constraint = self.model.addConstr(
-            gp.LinExpr(0) <= max_zones
-        )
+        self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
         # No overlapping constraints
         self.overlap_constraints = {
             (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
@@ -110,7 +115,9 @@ class CGMipSolver:
             self.model.optimize()
             cg_iterations += 1
             if entering_variables := self.find_entering_variables():
-                print(f"{cg_iterations}: Added {len(entering_variables[0])}/{entering_variables[1]}")
+                print(
+                    f"{cg_iterations}: Added {len(entering_variables[0])}/{entering_variables[1]}"
+                )
                 self.add_vars(entering_variables[0])
                 continue
             break
@@ -133,10 +140,12 @@ class CGMipSolver:
                 total_variables=len(self.X),
             ),
         )
-    
 
-class DynamicSolver():
-    def __init__(self, field: Field, max_zones: int, config: ZoningConfig) -> None:
+
+class DynamicSolver:
+    def __init__(
+        self, field: Field, max_zones: int, config: ZoningConfig
+    ) -> None:
         self.field = field
         self.max_zones = max_zones
         self.config = config
@@ -144,11 +153,14 @@ class DynamicSolver():
 
     def _score_box(self, box: Box) -> float:
         box_yield = self.field.yield_box_sums[box]
-        if box_yield < 0.00001: return 0
+        if box_yield < 0.00001:
+            return 0
         box_gpc = self.field.protein_box_sums[box] / box_yield
         return self.config.pricing.calculate_price(box_gpc, box_yield)
 
-    def _combine_solution(self, s1: tuple[float,list[Box]], s2: tuple[float, list[Box]]) -> tuple[float, list[Box]]:
+    def _combine_solution(
+        self, s1: tuple[float, list[Box]], s2: tuple[float, list[Box]]
+    ) -> tuple[float, list[Box]]:
         return (s1[0] + s2[0], s1[1] + s2[1])
 
     def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
@@ -158,24 +170,31 @@ class DynamicSolver():
 
         if n_zones == 1:
             result = (self._score_box(box), [box])
-        
-        elif box.height() < self.config.minimum_height or box.width() < self.config.minimum_width:
+
+        elif (
+            box.height() < self.config.minimum_height
+            or box.width() < self.config.minimum_width
+        ):
             result = (0.0, [])
 
         else:
-            split_values = [(self._score_box(box), [box])] # do nothing option
+            split_values = [(self._score_box(box), [box])]  # do nothing option
             horizontal_splits = [box.split(x=x) for x in range(box.x1, box.x2)]
             vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
             split_values.extend(
-                self._combine_solution(self.zone_box(b1, n1), self.zone_box(b2, n_zones-n1))
+                self._combine_solution(
+                    self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1)
+                )
                 for b1, b2 in horizontal_splits + vertical_splits
-                for n1 in range(n_zones-1)
+                for n1 in range(n_zones - 1)
             )
-            result = max(split_values, key=lambda tup: (round(tup[0],2), -len(tup[1])))
+            result = max(
+                split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1]))
+            )
 
         self.lookup[box, n_zones] = result
         return result
-    
+
     def solve(self) -> Solution:
         print("Starting dynamic programming solve")
         tic = time()
@@ -186,9 +205,9 @@ class DynamicSolver():
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
             SolveInfo(
-                toc-tic,
+                toc - tic,
                 0,
                 0,
                 0,
-            )
+            ),
         )

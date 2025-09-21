@@ -1,19 +1,34 @@
 import csv
 import os
+from math import floor, log10
 from pathlib import Path
-from math import log10, floor
 
 from zonings.data_processing import load_field
-from zonings.models import PriceInfo, MipConfig, Solution, ZoningConfig, Box, Field
+from zonings.models import (
+    Field,
+    MipConfig,
+    PriceInfo,
+    Solution,
+    ZoningConfig,
+)
 from zonings.solvers import CGMipSolver, DynamicSolver
 from zonings.zoning import make_zones
 
+
 def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
     return MipConfig(
-        max_variables_added_per_cg_iteration=10**(floor(log10(n_zones)) - 3) * 5
+        max_variables_added_per_cg_iteration=10 ** (floor(log10(n_zones)) - 3)
+        * 5
     )
 
-def write_outputs(field: Field, solution: Solution, pricing: PriceInfo, output_dir: Path, field_slug: str) -> None:
+
+def write_outputs(
+    field: Field,
+    solution: Solution,
+    pricing: PriceInfo,
+    output_dir: Path,
+    field_slug: str,
+) -> None:
     whole_field = field.bounding_box()
     whole_yield = field.yield_box_sums[whole_field]
     whole_protein = field.protein_box_sums[whole_field]
@@ -31,7 +46,9 @@ def write_outputs(field: Field, solution: Solution, pricing: PriceInfo, output_d
         kpis.update(
             {
                 "solve_time": round(solution.solve_info.total_solve_seconds, 2),
-                "cg_time": round(solution.solve_info.column_generation_seconds, 2),
+                "cg_time": round(
+                    solution.solve_info.column_generation_seconds, 2
+                ),
                 "cg_iters": solution.solve_info.column_generation_iterations,
                 "total_variables": solution.solve_info.total_variables,
             }
@@ -63,10 +80,11 @@ def write_outputs(field: Field, solution: Solution, pricing: PriceInfo, output_d
                 }
             )
 
+
 def mip_pipeline(field_slug: str, output_dir: Path) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
-    
+
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
 
@@ -81,14 +99,13 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
     zones = make_zones(
         field,
         ZoningConfig(
-            3,
-            3,
-            pricing,
-            minimum_pixels=int(field.width * field.height * 0.1)
+            3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)
         ),
     )
 
-    mip = CGMipSolver(field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones)))
+    mip = CGMipSolver(
+        field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones))
+    )
     sol = mip.solve()
 
     # write outputs:
@@ -98,10 +115,10 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
 def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
-    
+
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
-    
+
     try:
         field = load_field(field_slug, 2)
     except FileNotFoundError as e:

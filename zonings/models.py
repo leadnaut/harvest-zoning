@@ -4,8 +4,7 @@ from typing import Generator, Optional
 
 import numpy as np
 
-from zonings.utils import calculate_box_sums, Box
-
+from zonings.utils import Box, calculate_box_sums
 
 
 @dataclass
@@ -38,9 +37,9 @@ class Field:
 
     def pixels_in_box(self, box: Box) -> int:
         return self.field_box_sums[box]
-    
+
     def bounding_box(self) -> Box:
-        return Box(0, 0, self.width-1, self.height-1)
+        return Box(0, 0, self.width - 1, self.height - 1)
 
 
 @dataclass(frozen=True)
@@ -83,6 +82,7 @@ class ZoningConfig:
 class MipConfig:
     max_cg_iterations: Optional[int] = None
     max_variables_added_per_cg_iteration: int = 500
+
 
 @dataclass(frozen=True)
 class SolveInfo:
