@@ -1,6 +1,6 @@
 from multiprocessing import Pool
 
-from zonings.constants import Box
+from zonings.utils import Box
 from zonings.models import Field, PriceInfo, Zone, ZoningConfig
 
 
@@ -25,7 +25,7 @@ class Blender:
 def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
     print("Creating Boxes")
     boxes = [
-        ((x1, y1), (x2, y2))
+        Box(x1, y1,x2, y2)
         for x1 in range(field.width)
         for y1 in range(field.height)
         for x2 in range(x1 + config.minimum_width - 1, field.width)
@@ -35,7 +35,7 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
             and y2 - y1 >= config.minimum_height
             and (
                 config.minimum_pixels is None
-                or field.pixels_in_box(((x1, y1), (x2, y2)))
+                or field.pixels_in_box(Box(x1, y1, x2, y2))
                 >= config.minimum_pixels
             )
         )

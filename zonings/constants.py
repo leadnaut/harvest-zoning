@@ -4,7 +4,7 @@ import numpy as np
 
 NDArray = np.ndarray
 Number = float | int
-Box = tuple[tuple[int, int], tuple[int, int]]
+
 
 # String Formats
 YIELD_FILE_PATH_FORMAT = "data/yield/{slug}_clipped.tif"

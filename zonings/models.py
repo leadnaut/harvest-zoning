@@ -4,8 +4,8 @@ from typing import Generator, Optional
 
 import numpy as np
 
-from zonings.constants import Box
-from zonings.utils import calculate_box_sums
+from zonings.utils import calculate_box_sums, Box
+
 
 
 @dataclass
@@ -38,6 +38,9 @@ class Field:
 
     def pixels_in_box(self, box: Box) -> int:
         return self.field_box_sums[box]
+    
+    def bounding_box(self) -> Box:
+        return Box(0, 0, self.width-1, self.height-1)
 
 
 @dataclass(frozen=True)
@@ -46,12 +49,12 @@ class Zone:
     score: float
 
     def iter_contents(self) -> Generator[tuple[int, int], None, None]:
-        for x in range(self.box[0][0], self.box[1][0] + 1):
-            for y in range(self.box[0][1], self.box[1][1] + 1):
+        for x in range(self.box.x1, self.box.x2 + 1):
+            for y in range(self.box.y1, self.box.y2 + 1):
                 yield (x, y)
 
     def __str__(self) -> str:
-        return f"Zone((x1, y1)={self.box[0]}, (x2,y2)={self.box[1]}, score={round(self.score, 2)})"
+        return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
 
 
 @dataclass(frozen=True)
@@ -77,11 +80,9 @@ class ZoningConfig:
 
 
 @dataclass(frozen=True)
-class SolverConfig:
+class MipConfig:
     max_cg_iterations: Optional[int] = None
     max_variables_added_per_cg_iteration: int = 500
-    save_solve_info: Optional[bool] = True
-
 
 @dataclass(frozen=True)
 class SolveInfo:

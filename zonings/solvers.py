@@ -5,8 +5,8 @@ from typing import Any
 
 import gurobipy as gp
 
-from zonings.models import Field, Solution, SolveInfo, SolverConfig, Zone
-from zonings.utils import calculate_box_sums
+from zonings.models import Field, Solution, SolveInfo, MipConfig, Zone, ZoningConfig
+from zonings.utils import Box, calculate_box_sums
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class CGMipSolver:
         zones: list[Zone],
         max_zones: int,
         field: Field,
-        config: SolverConfig,
+        config: MipConfig,
     ) -> None:
         self.all_zones = set(zones)
         self.model_zones: set[Zone] = set()
@@ -132,4 +132,63 @@ class CGMipSolver:
                 column_generation_iterations=cg_iterations,
                 total_variables=len(self.X),
             ),
+        )
+    
+
+class DynamicSolver():
+    def __init__(self, field: Field, max_zones: int, config: ZoningConfig) -> None:
+        self.field = field
+        self.max_zones = max_zones
+        self.config = config
+        self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
+
+    def _score_box(self, box: Box) -> float:
+        box_yield = self.field.yield_box_sums[box]
+        if box_yield < 0.00001: return 0
+        box_gpc = self.field.protein_box_sums[box] / box_yield
+        return self.config.pricing.calculate_price(box_gpc, box_yield)
+
+    def _combine_solution(self, s1: tuple[float,list[Box]], s2: tuple[float, list[Box]]) -> tuple[float, list[Box]]:
+        return (s1[0] + s2[0], s1[1] + s2[1])
+
+    def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
+        result: tuple[float, list[Box]]
+        if (box, n_zones) in self.lookup:
+            return self.lookup[box, n_zones]
+
+        if n_zones == 1:
+            result = (self._score_box(box), [box])
+        
+        elif box.height() < self.config.minimum_height or box.width() < self.config.minimum_width:
+            result = (0.0, [])
+
+        else:
+            split_values = [(self._score_box(box), [box])] # do nothing option
+            horizontal_splits = [box.split(x=x) for x in range(box.x1, box.x2)]
+            vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
+            split_values.extend(
+                self._combine_solution(self.zone_box(b1, n1), self.zone_box(b2, n_zones-n1))
+                for b1, b2 in horizontal_splits + vertical_splits
+                for n1 in range(n_zones-1)
+            )
+            result = max(split_values, key=lambda tup: (round(tup[0],2), -len(tup[1])))
+
+        self.lookup[box, n_zones] = result
+        return result
+    
+    def solve(self) -> Solution:
+        print("Starting dynamic programming solve")
+        tic = time()
+        val, boxes = self.zone_box(self.field.bounding_box(), self.max_zones)
+        toc = time()
+        print(f"Solve done! Explored {len(self.lookup)} nodes")
+        return Solution(
+            [Zone(b, self._score_box(b)) for b in boxes],
+            val,
+            SolveInfo(
+                toc-tic,
+                0,
+                0,
+                0,
+            )
         )
