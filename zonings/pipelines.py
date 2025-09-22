@@ -103,9 +103,7 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
         ),
     )
 
-    mip = CGMipSolver(
-        field_slug, zones, 4, field, _guess_good_solve_parameters(len(zones))
-    )
+    mip = CGMipSolver(zones, 4, field, _guess_good_solve_parameters(len(zones)))
     sol = mip.solve()
 
     # write outputs:
@@ -128,7 +126,12 @@ def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
         [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
     )
 
-    solver = DynamicSolver(field, 5, ZoningConfig(3, 3, pricing, int(field.width * field.height * 0.1)), 600)
+    solver = DynamicSolver(
+        field,
+        5,
+        ZoningConfig(3, 3, pricing, int(field.width * field.height * 0.1)),
+        600,
+    )
     sol = solver.solve()
 
     write_outputs(field, sol, pricing, output_dir, field_slug)

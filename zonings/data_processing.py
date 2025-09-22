@@ -41,10 +41,12 @@ def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
                         a,
                         np.full(
                             shape=[
-                                target_size - a.shape[i] if i == axis else a.shape[i]
+                                target_size - a.shape[i]
+                                if i == axis
+                                else a.shape[i]
                                 for i in range(n_dims)
                             ],
-                            fill_value=pad_value
+                            fill_value=pad_value,
                         ),
                     ],
                     axis=axis,
@@ -128,8 +130,10 @@ def load_field(slug: str, merge_size: int) -> Field:
         print(
             f"Yield and protein data for {slug} have different shapes. Normalising"
         )
-        yield_array, protein_array = pnormalise_arrays(yield_array, protein_array)
-    
+        yield_array, protein_array = pnormalise_arrays(
+            yield_array, protein_array
+        )
+
     field_map = yield_array > 0.0001
 
     merged_yield = _average_pixels(yield_array, field_map, merge_size)

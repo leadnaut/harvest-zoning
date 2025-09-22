@@ -7,7 +7,6 @@ from zonings.data_processing import load_field
 from zonings.models import PriceInfo, ZoningConfig
 from zonings.pipelines import dynamic_pipeline, mip_pipeline
 from zonings.solvers import DynamicSolver
-from zonings.utils import Box
 
 
 @click.group
@@ -38,9 +37,7 @@ def dynamic_solve_field(field_slug: str, output: Path):
 @cli.command()
 @click.argument("solve_type", type=click.Choice(["mip", "dynamic"]))
 @click.argument("field_list", type=click.File())
-@click.argument(
-    "output_dir", type=click.Path(writable=True, path_type=Path)
-)
+@click.argument("output_dir", type=click.Path(writable=True, path_type=Path))
 def solve_batch(
     solve_type: str, field_list: io.TextIOWrapper, output_dir: Path
 ):
