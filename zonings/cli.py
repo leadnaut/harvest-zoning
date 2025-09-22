@@ -39,7 +39,7 @@ def dynamic_solve_field(field_slug: str, output: Path):
 @click.argument("solve_type", type=click.Choice(["mip", "dynamic"]))
 @click.argument("field_list", type=click.File())
 @click.argument(
-    "output_dir", type=click.Path(exists=True, writable=True, path_type=Path)
+    "output_dir", type=click.Path(writable=True, path_type=Path)
 )
 def solve_batch(
     solve_type: str, field_list: io.TextIOWrapper, output_dir: Path

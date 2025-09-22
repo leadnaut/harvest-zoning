@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from heapq import heappush, heapreplace
 from time import time
-from typing import Any
+from typing import Any, Optional
 
 import gurobipy as gp
 
@@ -144,13 +144,15 @@ class CGMipSolver:
 
 class DynamicSolver:
     def __init__(
-        self, field: Field, max_zones: int, config: ZoningConfig
+        self, field: Field, max_zones: int, config: ZoningConfig, timeout: Optional[float] = None
     ) -> None:
         self.field = field
         self.max_zones = max_zones
         self.config = config
         self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
         self.cache_hits = 0
+        self.solve_start = 0.0
+        self.timeout = timeout
 
     def _score_box(self, box: Box) -> float:
         box_yield = self.field.yield_box_sums[box]
@@ -166,6 +168,9 @@ class DynamicSolver:
 
     def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
+        if self.timeout is not None and time() - self.solve_start > self.timeout:
+            return (0, [])
+
         if (box, n_zones) in self.lookup:
             self.cache_hits += 1
             return self.lookup[box, n_zones]
@@ -176,6 +181,8 @@ class DynamicSolver:
         elif (
             box.height() < self.config.minimum_height
             or box.width() < self.config.minimum_width
+            or ( self.config.minimum_pixels and
+                self.field.pixels_in_box(box) < self.config.minimum_pixels)
         ):
             result = (0.0, [])
 
@@ -200,6 +207,8 @@ class DynamicSolver:
     def solve(self) -> Solution:
         print("Starting dynamic programming solve")
         tic = time()
+        if self.timeout is not None:
+            self.solve_start = tic
         self.cache_hits = 0
         self.lookup = {}
         val, boxes = self.zone_box(self.field.bounding_box(), self.max_zones)
