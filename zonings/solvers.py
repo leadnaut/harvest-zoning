@@ -361,7 +361,7 @@ class DynamicSolver:
         return result
 
     def solve(self) -> Solution[Zone]:
-        print("Starting dynamic programming solve")
+        print(f"Starting dynamic programming solve for {self.field.field_id}")
         tic = time()
         if self.timeout is not None:
             self.solve_start = tic
