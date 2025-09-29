@@ -98,7 +98,7 @@ def grid_search(field_list: io.TextIOWrapper, output_file: io.TextIOWrapper):
                 field,
                 max_zones,
                 ZoningConfig(min_dimension, min_dimension, pricing),
-                timeout=600
+                timeout=600,
             )
             solution = solver.solve()
 

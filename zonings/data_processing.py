@@ -18,14 +18,16 @@ from zonings.utils import no_numpy
 
 def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
     """
-    pad a series of arrays so they are all the same shape.
+    pad a series of arrays so they are all the same shape. arrays must have the
+    same dimensions. the returned array's dimension will be the dimension-wise
+    maximum of the input arrays.
     """
     n_arrays = len(arrays)
     if any(
         len(arrays[0].shape) != len(arrays[i].shape) for i in range(n_arrays)
     ):
         raise ValueError(
-            "Attempted to padqualise arrays of different dimensions"
+            "Attempted to normalise arrays of different dimensions"
         )
     n_dims = len(arrays[0].shape)
 
@@ -87,7 +89,7 @@ def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
     return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
 
 
-def load_field(slug: str, merge_size: int, skip_init:bool=False) -> Field:
+def load_field(slug: str, merge_size: int, skip_init: bool = False) -> Field:
     yield_file_path = YIELD_FILE_PATH_FORMAT.format(slug=slug)
     protein_file_path = PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
 
@@ -155,17 +157,26 @@ def load_field(slug: str, merge_size: int, skip_init:bool=False) -> Field:
         ),
     )
 
-def field_to_sfield(field: Field, yield_error: float, gpc_error: float, num_scenarios: int) -> SField:
 
+def field_to_sfield(
+    field: Field, yield_error: float, gpc_error: float, num_scenarios: int
+) -> SField:
     yield_maps = []
     gpc_maps = []
     field_mask = np.asarray(field.field_map)
     for _ in range(num_scenarios):
-        y_map = np.add(field.yield_map, np.random.normal(0, yield_error, (field.width, field.height)) * field_mask)
-        g_map = np.add(field.gpc_map, np.random.normal(0, gpc_error, (field.width, field.height)) * field_mask)
+        y_map = np.add(
+            field.yield_map,
+            np.random.normal(0, yield_error, (field.width, field.height))
+            * field_mask,
+        )
+        g_map = np.add(
+            field.gpc_map,
+            np.random.normal(0, gpc_error, (field.width, field.height))
+            * field_mask,
+        )
         yield_maps.append(no_numpy(y_map))
         gpc_maps.append(no_numpy(g_map))
-
 
     return SField(
         field_id=field.field_id,
@@ -176,9 +187,16 @@ def field_to_sfield(field: Field, yield_error: float, gpc_error: float, num_scen
         field_map=field.field_map,
         yield_maps=yield_maps,
         gpc_maps=gpc_maps,
-        coordinates=field.coordinates
+        coordinates=field.coordinates,
     )
 
-def load_sfield(field_slug: str, merge_size: int, yield_error: float, gpc_error: float, num_scenarios: int) -> SField:
+
+def load_sfield(
+    field_slug: str,
+    merge_size: int,
+    yield_error: float,
+    gpc_error: float,
+    num_scenarios: int,
+) -> SField:
     field = load_field(field_slug, merge_size, True)
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)
