@@ -19,12 +19,15 @@ class Field:
     yield_map: ListGrid[float]
     gpc_map: ListGrid[float]
     coordinates: Optional[tuple[float, float]] = None
+    skip_init: bool = False
 
     field_box_sums: dict[Box, int] = field(init=False)
     yield_box_sums: dict[Box, float] = field(init=False)
     protein_box_sums: dict[Box, float] = field(init=False)
 
     def __post_init__(self) -> None:
+        if self.skip_init:
+            return
         print(f"Intializing field {self.field_id}")
         self.field_box_sums = calculate_box_sums(self.field_map)
         self.yield_box_sums = calculate_box_sums(self.yield_map)

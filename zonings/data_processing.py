@@ -12,7 +12,7 @@ from zonings.constants import (
     YIELD_FILE_PATH_FORMAT,
     NDArray,
 )
-from zonings.models import Field
+from zonings.models import Field, SField
 from zonings.utils import no_numpy
 
 
@@ -87,7 +87,7 @@ def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
     return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
 
 
-def load_field(slug: str, merge_size: int) -> Field:
+def load_field(slug: str, merge_size: int, skip_init:bool=False) -> Field:
     yield_file_path = YIELD_FILE_PATH_FORMAT.format(slug=slug)
     protein_file_path = PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
 
@@ -148,8 +148,37 @@ def load_field(slug: str, merge_size: int) -> Field:
         field_map=no_numpy(merged_yield > 0.001),
         yield_map=no_numpy(merged_yield),
         gpc_map=no_numpy(merged_protein / 100),
+        skip_init=skip_init,
         coordinates=(
             (yield_data.bounds.top + yield_data.bounds.bottom) / 2,
             (yield_data.bounds.left + yield_data.bounds.right) / 2,
         ),
     )
+
+def field_to_sfield(field: Field, yield_error: float, gpc_error: float, num_scenarios: int) -> SField:
+
+    yield_maps = []
+    gpc_maps = []
+    field_mask = np.asarray(field.field_map)
+    for _ in range(num_scenarios):
+        y_map = np.add(field.yield_map, np.random.normal(0, yield_error, (field.width, field.height)) * field_mask)
+        g_map = np.add(field.gpc_map, np.random.normal(0, gpc_error, (field.width, field.height)) * field_mask)
+        yield_maps.append(no_numpy(y_map))
+        gpc_maps.append(no_numpy(g_map))
+
+
+    return SField(
+        field_id=field.field_id,
+        height=field.height,
+        width=field.width,
+        pixel_area=field.pixel_area,
+        num_scenarios=num_scenarios,
+        field_map=field.field_map,
+        yield_maps=yield_maps,
+        gpc_maps=gpc_maps,
+        coordinates=field.coordinates
+    )
+
+def load_sfield(field_slug: str, merge_size: int, yield_error: float, gpc_error: float, num_scenarios: int) -> SField:
+    field = load_field(field_slug, merge_size, True)
+    return field_to_sfield(field, yield_error, gpc_error, num_scenarios)

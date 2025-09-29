@@ -92,12 +92,13 @@ def grid_search(field_list: io.TextIOWrapper, output_file: io.TextIOWrapper):
         "field,average_gpc,min_zone_dim,max_zones,solution,benefit,solve_time,timed_out,zones_used\n"
     )
     line_format = "{id},{gpc:.4f},{min_dim},{max_zones},{sol:.2f},{benefit:.2f},{solve_time:.4f},{timed_out},{zones_used}\n"
-    for min_dimension, max_zones in product(range(1, 20, 2), range(2, 6)):
+    for min_dimension, max_zones in product(range(1, 20, 2), range(2, 7)):
         for field in fields:
             solver = DynamicSolver(
                 field,
                 max_zones,
                 ZoningConfig(min_dimension, min_dimension, pricing),
+                timeout=600
             )
             solution = solver.solve()
 
