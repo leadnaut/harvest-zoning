@@ -3,7 +3,9 @@ import os
 from math import floor, log10
 from pathlib import Path
 
-from zonings.data_processing import load_field
+import numpy as np
+
+from zonings.data_processing import field_to_sfield, load_field
 from zonings.models import (
     Field,
     MipConfig,
@@ -11,7 +13,7 @@ from zonings.models import (
     Solution,
     ZoningConfig,
 )
-from zonings.solvers import CGMipSolver, DynamicSolver
+from zonings.solvers import CGMipSolver, CVarDynamicSolver, DynamicSolver
 from zonings.zoning import make_zones
 
 
@@ -135,3 +137,21 @@ def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
     sol = solver.solve()
 
     write_outputs(field, sol, pricing, output_dir, field_slug)
+
+
+def sdynamic_pipeline(field_slug: str, output_dir: Path) -> None:
+    np.random.seed(2025)
+    try:
+        field = field_to_sfield(load_field(field_slug, 2), 0.56, 0.4, 20)
+    except FileNotFoundError as e:
+        print(e.args)
+        return
+
+    pricing = PriceInfo(
+        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
+    )
+
+    solver = CVarDynamicSolver(field, 4, ZoningConfig(3, 3, pricing))
+    sol = solver.solve(0.2)
+
+    print(sol.zones)

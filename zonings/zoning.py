@@ -1,6 +1,6 @@
 from multiprocessing import Pool
 
-from zonings.models import Field, PriceInfo, Zone, ZoningConfig
+from zonings.models import Field, PriceInfo, SField, SZone, Zone, ZoningConfig
 from zonings.utils import Box
 
 
@@ -22,7 +22,28 @@ class Blender:
         )
 
 
-def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
+class SBlender:
+    def __init__(self, field: SField, price_info: PriceInfo) -> None:
+        self.field = field
+        self.price_info = price_info
+
+    def __call__(self, box: Box) -> SZone:
+        return SZone(
+            box,
+            [
+                self.price_info.calculate_price(
+                    self.field.protein_box_sums[s][box]
+                    / self.field.yield_box_sums[s][box],
+                    self.field.yield_box_sums[s][box],
+                )
+                for s in range(self.field.num_scenarios)
+            ],
+        )
+
+
+def _zone_gen(
+    field: Field | SField, config: ZoningConfig
+) -> list[Zone] | list[SZone]:
     print("Creating Boxes")
     boxes = [
         Box(x1, y1, x2, y2)
@@ -35,22 +56,34 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
             and y2 - y1 >= config.minimum_height
             and (
                 config.minimum_pixels is None
-                or field.pixels_in_box(Box(x1, y1, x2, y2))
+                or field.field_box_sums[Box(x1, y1, x2, y2)]
                 >= config.minimum_pixels
             )
         )
     ]
     nboxes = len(boxes)
     print(f"Starting Scoring {nboxes} Boxes")
-    blender = Blender(field, config.pricing)
-    zones = []
+    blender: Blender | SBlender
+    if isinstance(field, Field):
+        blender = Blender(field, config.pricing)
+    else:
+        blender = SBlender(field, config.pricing)
+    zones: list[Zone] | list[SZone] = []
     with Pool(6, maxtasksperchild=1000) as pool:
         zpool = pool.imap_unordered(blender, boxes, chunksize=10000)
         for i, z in enumerate(zpool):
-            zones.append(z)
+            zones.append(z)  # type: ignore
             if i % 100 != 0:
                 continue
             print(f"Progress: {i / nboxes * 100:.2f}%", end="\r")
         print("\nDone!")
 
     return zones
+
+
+def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
+    return _zone_gen(field, config)  # type: ignore
+
+
+def make_szones(field: SField, config: ZoningConfig) -> list[SZone]:
+    return _zone_gen(field, config)  # type: ignore

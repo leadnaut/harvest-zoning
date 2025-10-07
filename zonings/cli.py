@@ -6,7 +6,7 @@ import click
 
 from zonings.data_processing import load_field
 from zonings.models import Field, PriceInfo, ZoningConfig
-from zonings.pipelines import dynamic_pipeline, mip_pipeline
+from zonings.pipelines import dynamic_pipeline, mip_pipeline, sdynamic_pipeline
 from zonings.solvers import DynamicSolver
 
 
@@ -33,6 +33,13 @@ def mip_solve_field(field_slug: str, output: Path):
 @click.argument("output", type=click.Path(writable=True, path_type=Path))
 def dynamic_solve_field(field_slug: str, output: Path):
     dynamic_pipeline(field_slug, output)
+
+
+@cli.command()
+@click.argument("field_slug")
+@click.argument("output", type=click.Path(writable=True, path_type=Path))
+def cvar_solve_field(field_slug: str, output: Path):
+    sdynamic_pipeline(field_slug, output)
 
 
 @cli.command()

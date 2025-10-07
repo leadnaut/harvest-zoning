@@ -167,12 +167,12 @@ def field_to_sfield(
     for _ in range(num_scenarios):
         y_map = np.add(
             field.yield_map,
-            np.random.normal(0, yield_error, (field.width, field.height))
+            np.random.normal(0, yield_error, (field.height, field.width))
             * field_mask,
         )
         g_map = np.add(
             field.gpc_map,
-            np.random.normal(0, gpc_error, (field.width, field.height))
+            np.random.normal(0, gpc_error, (field.height, field.width))
             * field_mask,
         )
         yield_maps.append(no_numpy(y_map))

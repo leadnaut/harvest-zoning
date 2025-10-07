@@ -79,6 +79,9 @@ class SField:
             )
         print(f"Finished initalizing stochastic field {self.field_id}")
 
+    def bounding_box(self) -> Box:
+        return Box(0, 0, self.width - 1, self.height - 1)
+
 
 @dataclass(frozen=True)
 class Zone:
@@ -117,6 +120,13 @@ class PriceInfo:
             if gpc > protein:
                 return price * yield_tonnes
         return 0
+
+    def price_box_in_sfield(self, box: Box, sfield: SField, s: int) -> float:
+        box_yield = sfield.yield_box_sums[s][box]
+        if box_yield < 0.001:
+            return 0.0
+        box_gpc = sfield.protein_box_sums[s][box] / box_yield
+        return self.calculate_price(box_gpc, box_yield)
 
 
 @dataclass(frozen=True)

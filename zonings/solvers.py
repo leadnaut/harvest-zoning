@@ -382,3 +382,133 @@ class DynamicSolver:
                 0,
             ),
         )
+
+
+class CVarDynamicSolver:
+    def __init__(
+        self,
+        field: SField,
+        max_zones: int,
+        config: ZoningConfig,
+        time_out: Optional[float] = None,
+    ) -> None:
+        self.field = field
+        self.max_zones = max_zones
+        self.config = config
+        self.time_out = time_out
+
+        self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
+        self.solve_start = 0.0
+        self.cache_hits = 0
+        self.cvar_scenarios: set[int] = set()
+
+    def _score_box(self, box: Box) -> float:
+        cvar_scenario_score = 0.0
+        pseudo_var = 0.0
+        for s in self.cvar_scenarios:
+            score = self.config.pricing.price_box_in_sfield(box, self.field, s)
+            cvar_scenario_score += score
+            pseudo_var = max(pseudo_var, score)
+
+        positive_revenue = 0.0
+        for s in range(self.field.num_scenarios):
+            positive_revenue += max(
+                pseudo_var
+                - self.config.pricing.price_box_in_sfield(box, self.field, s),
+                0,
+            )
+        positive_revenue /= self.field.num_scenarios
+        return pseudo_var - (
+            positive_revenue
+            / (1 - len(self.cvar_scenarios) / self.field.num_scenarios)
+        )
+
+    def _combine_solution(
+        self, s1: tuple[float, list[Box]], s2: tuple[float, list[Box]]
+    ) -> tuple[float, list[Box]]:
+        return (s1[0] + s2[0], s1[1] + s2[1])
+
+    def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
+        result: tuple[float, list[Box]]
+        if (
+            self.time_out is not None
+            and time() - self.solve_start > self.time_out
+        ):
+            return (0, [])
+
+        if (box, n_zones) in self.lookup:
+            self.cache_hits += 1
+            return self.lookup[box, n_zones]
+
+        if (
+            box.height() < self.config.minimum_height
+            or box.width() < self.config.minimum_width
+            or (
+                self.config.minimum_pixels
+                and self.field.field_box_sums[box] < self.config.minimum_pixels
+            )
+        ):
+            result = (0.0, [])
+        elif n_zones == 1:
+            result = (self._score_box(box), [box])
+        else:
+            split_values = [(self._score_box(box), [box])]  # do nothing option
+            horizontal_splits = [box.split(x=x) for x in range(box.x1, box.x2)]
+            vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
+            split_values.extend(
+                self._combine_solution(
+                    self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1)
+                )
+                for b1, b2 in horizontal_splits + vertical_splits
+                for n1 in range(1, n_zones)
+            )
+            result = max(
+                split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1]))
+            )
+
+        self.lookup[box, n_zones] = result
+        return result
+
+    def solve(self, cvar_alpha: float) -> Solution:
+        n_cvar_scenarios = int(self.field.num_scenarios * cvar_alpha)
+        self.cvar_scenarios = set(
+            range(n_cvar_scenarios)
+        )  # take the first n as a guess
+
+        historical_cvar_scenarios = [set(range(n_cvar_scenarios))]
+        while True:
+            print(self.cvar_scenarios)
+            proposed_solution = self.zone_box(
+                self.field.bounding_box(), self.max_zones
+            )
+            scenario_scores: list[tuple[float, int]] = []
+            for s in range(self.field.num_scenarios):
+                scenario_scores.append(
+                    (
+                        sum(
+                            self.config.pricing.price_box_in_sfield(
+                                b, self.field, s
+                            )
+                            for b in proposed_solution[1]
+                        ),
+                        s,
+                    )
+                )
+
+            worst_alpha_scores = sorted(scenario_scores)[:n_cvar_scenarios]
+
+            print(
+                sum(score for (score, _) in worst_alpha_scores)
+                / n_cvar_scenarios
+            )
+            print(proposed_solution[1])
+
+            new_cvar_scenarios = set(s for (_, s) in worst_alpha_scores)
+            if new_cvar_scenarios in historical_cvar_scenarios:
+                break
+
+            self.cvar_scenarios = new_cvar_scenarios
+            historical_cvar_scenarios.append(new_cvar_scenarios)
+            self.lookup = {}
+
+        return Solution([SZone(b, []) for b in proposed_solution[1]], 0, None)
