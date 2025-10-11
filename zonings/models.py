@@ -107,7 +107,7 @@ class SZone:
         for x in range(self.box.x1, self.box.x2 + 1):
             for y in range(self.box.y1, self.box.y2 + 1):
                 yield (x, y)
-    
+
     def __hash__(self) -> int:
         return hash(self.box)
 

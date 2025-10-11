@@ -1,9 +1,9 @@
 import io
 from itertools import product
 from pathlib import Path
-import numpy as np
 
 import click
+import numpy as np
 
 from zonings.constants import DEFAULT_PRICING
 from zonings.data_processing import load_field, load_sfield
@@ -44,6 +44,7 @@ def dynamic_solve_field(field_slug: str, output: Path):
 def cvar_solve_field(field_slug: str, output: Path):
     sdynamic_pipeline(field_slug, output)
 
+
 @cli.command()
 @click.argument("field_slug")
 def cvar_mip_solve(field_slug: str):
@@ -51,19 +52,23 @@ def cvar_mip_solve(field_slug: str):
     field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
     solver = StochasticCGMipSolver(
         make_szones(field, ZoningConfig(3, 3, DEFAULT_PRICING)),
-        4, 0.2 ,0, field, MipConfig()
+        4,
+        0.2,
+        0,
+        field,
+        MipConfig(),
     )
     sol = solver.solve()
     scores = []
     for s in range(field.num_scenarios):
         scores.append(
-            sum(DEFAULT_PRICING.price_box_in_sfield(z.box, field, s)
-            for z in sol.zones)
+            sum(
+                DEFAULT_PRICING.price_box_in_sfield(z.box, field, s)
+                for z in sol.zones
+            )
         )
     print(sum(sorted(scores)[:10]) / 10)
     print(sol.zones)
-
-
 
 
 @cli.command()

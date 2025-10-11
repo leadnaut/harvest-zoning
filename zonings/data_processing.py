@@ -11,8 +11,8 @@ from zonings.constants import (
     PROTEIN_FILE_PATH_FORMAT,
     YIELD_FILE_PATH_FORMAT,
 )
-from zonings.types import NDArray
 from zonings.models import Field, SField
+from zonings.types import NDArray
 from zonings.utils import no_numpy
 
 

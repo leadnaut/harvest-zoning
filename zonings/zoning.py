@@ -1,5 +1,3 @@
-from multiprocessing import Pool
-
 from zonings.models import Field, PriceInfo, SField, SZone, Zone, ZoningConfig
 from zonings.utils import Box
 
@@ -70,10 +68,10 @@ def _zone_gen(
         blender = SBlender(field, config.pricing)
     zones: list[Zone] | list[SZone] = []
     for i, b in enumerate(boxes):
-        zones.append(blender(b)) # type: ignore
+        zones.append(blender(b))  # type: ignore
         if i % 10000 == 0:
-            print(f"{i/nboxes:.2f}%", end="\r")
-            
+            print(f"{i / nboxes:.2f}%", end="\r")
+
     return zones
 
 

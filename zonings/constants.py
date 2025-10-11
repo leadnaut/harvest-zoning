@@ -1,5 +1,3 @@
-import numpy as np
-
 from zonings.models import PriceInfo
 
 # String Formats
@@ -11,5 +9,5 @@ MAP_PIXEL_TOL_KM = 0.001  # 1 metre
 KM2_TO_HA = 100
 
 DEFAULT_PRICING = PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )
+    [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
+)

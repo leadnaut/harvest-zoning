@@ -151,7 +151,7 @@ class StochasticCGMipSolver:
         zones: list[SZone],
         max_zones: int,
         alpha: float,
-        lam : float,
+        lam: float,
         field: SField,
         config: MipConfig,
     ) -> None:
@@ -171,7 +171,7 @@ class StochasticCGMipSolver:
         self.model.setObjective(
             lam * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
             + (1 - lam) * self.CVar,
-            gp.GRB.MAXIMIZE
+            gp.GRB.MAXIMIZE,
         )
         # Constraints
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
@@ -188,9 +188,11 @@ class StochasticCGMipSolver:
             s: self.model.addConstr(self.Beta[s] + self.BetaM[s] >= self.Var)
             for s in range(self.num_scenarios)
         }
-        self.cvar_constraint = self.model.addConstr(self.CVar == self.Var - (
-            1 / (alpha * self.num_scenarios)
-        ) * gp.quicksum(self.BetaM[s] for s in range(self.num_scenarios))
+        self.cvar_constraint = self.model.addConstr(
+            self.CVar
+            == self.Var
+            - (1 / (alpha * self.num_scenarios))
+            * gp.quicksum(self.BetaM[s] for s in range(self.num_scenarios))
         )
 
     def choose_starting_zones(self) -> list[SZone]:
