@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Generator, Generic, Optional, TypeVar
 
 import numpy as np
@@ -106,6 +107,9 @@ class SZone:
         for x in range(self.box.x1, self.box.x2 + 1):
             for y in range(self.box.y1, self.box.y2 + 1):
                 yield (x, y)
+    
+    def __hash__(self) -> int:
+        return hash(self.box)
 
 
 @dataclass(frozen=True)
@@ -113,10 +117,12 @@ class PriceInfo:
     protein_minimums: list[float]
     price_per_tonnes: list[float]
 
+    @cached_property
+    def reversed_lookup(self) -> list[tuple[float, float]]:
+        return list(zip(self.protein_minimums, self.price_per_tonnes))
+
     def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
-        for protein, price in zip(
-            self.protein_minimums[::-1], self.price_per_tonnes[::-1]
-        ):
+        for protein, price in self.reversed_lookup:
             if gpc > protein:
                 return price * yield_tonnes
         return 0

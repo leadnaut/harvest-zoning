@@ -151,6 +151,7 @@ class StochasticCGMipSolver:
         zones: list[SZone],
         max_zones: int,
         alpha: float,
+        lam : float,
         field: SField,
         config: MipConfig,
     ) -> None:
@@ -159,7 +160,6 @@ class StochasticCGMipSolver:
         self.field = field
         self.config = config
         self.num_scenarios = len(self.field.yield_maps)
-        lam = 0.5
         self.model = gp.Model()
         # Variables
         self.X: dict[SZone, gp.Var] = {}
@@ -170,7 +170,8 @@ class StochasticCGMipSolver:
         # Objective:
         self.model.setObjective(
             lam * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
-            + (1 - lam) * self.CVar
+            + (1 - lam) * self.CVar,
+            gp.GRB.MAXIMIZE
         )
         # Constraints
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
@@ -187,9 +188,10 @@ class StochasticCGMipSolver:
             s: self.model.addConstr(self.Beta[s] + self.BetaM[s] >= self.Var)
             for s in range(self.num_scenarios)
         }
-        self.cvar_constraint = self.Var - (
+        self.cvar_constraint = self.model.addConstr(self.CVar == self.Var - (
             1 / (alpha * self.num_scenarios)
         ) * gp.quicksum(self.BetaM[s] for s in range(self.num_scenarios))
+        )
 
     def choose_starting_zones(self) -> list[SZone]:
         return []
@@ -243,8 +245,8 @@ class StochasticCGMipSolver:
                     < self.config.max_variables_added_per_cg_iteration
                 ):
                     heappush(best_zones, CGQueueNode(reduced_cost, z))
-            elif reduced_cost > best_zones[0].reduced_cost:
-                heapreplace(best_zones, CGQueueNode(reduced_cost, z))
+                elif reduced_cost > best_zones[0].reduced_cost:
+                    heapreplace(best_zones, CGQueueNode(reduced_cost, z))
 
         if len(best_zones) == 0:
             return None
@@ -260,6 +262,9 @@ class StochasticCGMipSolver:
         ):
             self.model.setParam("OutputFlag", 0)
             self.model.optimize()
+            if self.model.Status == gp.GRB.INF_OR_UNBD:
+                print("infeasible cg mip")
+                break
             cg_iterations += 1
             if entering_variables := self.find_entering_variables():
                 print(

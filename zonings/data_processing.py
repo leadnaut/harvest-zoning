@@ -10,8 +10,8 @@ from zonings.constants import (
     MAP_PIXEL_TOL_KM,
     PROTEIN_FILE_PATH_FORMAT,
     YIELD_FILE_PATH_FORMAT,
-    NDArray,
 )
+from zonings.types import NDArray
 from zonings.models import Field, SField
 from zonings.utils import no_numpy
 
@@ -19,7 +19,7 @@ from zonings.utils import no_numpy
 def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
     """
     pad a series of arrays so they are all the same shape. arrays must have the
-    same dimensions. the returned array's dimension will be the dimension-wise
+    same dimension. the returned array's shape will be the dimension-wise
     maximum of the input arrays.
     """
     n_arrays = len(arrays)

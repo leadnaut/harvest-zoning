@@ -69,15 +69,11 @@ def _zone_gen(
     else:
         blender = SBlender(field, config.pricing)
     zones: list[Zone] | list[SZone] = []
-    with Pool(6, maxtasksperchild=1000) as pool:
-        zpool = pool.imap_unordered(blender, boxes, chunksize=10000)
-        for i, z in enumerate(zpool):
-            zones.append(z)  # type: ignore
-            if i % 100 != 0:
-                continue
-            print(f"Progress: {i / nboxes * 100:.2f}%", end="\r")
-        print("\nDone!")
-
+    for i, b in enumerate(boxes):
+        zones.append(blender(b)) # type: ignore
+        if i % 10000 == 0:
+            print(f"{i/nboxes:.2f}%", end="\r")
+            
     return zones
 
 

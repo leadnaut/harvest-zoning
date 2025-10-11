@@ -3,7 +3,7 @@ from typing import Any, Optional, TypeVar
 
 import numpy as np
 
-from zonings.constants import NDArray, Number
+from zonings.types import NDArray, Number
 
 NumberT = TypeVar("NumberT", bound=Number)
 SummableT = TypeVar("SummableT", bound=Number | NDArray)

@@ -142,7 +142,7 @@ def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
 def sdynamic_pipeline(field_slug: str, output_dir: Path) -> None:
     np.random.seed(2025)
     try:
-        field = field_to_sfield(load_field(field_slug, 2), 0.56, 0.4, 20)
+        field = field_to_sfield(load_field(field_slug, 2), 0.56, 0.4, 50)
     except FileNotFoundError as e:
         print(e.args)
         return
