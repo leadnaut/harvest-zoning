@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from functools import cached_property
-from typing import Generator, Generic, Optional, TypeVar
+from typing import Any, Generator, Generic, Optional, TypeVar
 
 import numpy as np
 
@@ -43,6 +43,24 @@ class Field:
     def bounding_box(self) -> Box:
         return Box(0, 0, self.width - 1, self.height - 1)
 
+    def to_dict(self) -> dict[str, Any]:
+        return (
+            {
+                k: v
+                for (k, v) in asdict(self).items()
+                if k in {"field_id", "height", "width", "pixel_area"}
+            }
+            | {
+                "gpc": self.protein_box_sums[self.bounding_box()]
+                / self.yield_box_sums[self.bounding_box()]
+            }
+            | (
+                {}
+                if self.coordinates is None
+                else {"lat": self.coordinates[0], "lon": self.coordinates[1]}
+            )
+        )
+
 
 @dataclass
 class SField:
@@ -82,6 +100,25 @@ class SField:
 
     def bounding_box(self) -> Box:
         return Box(0, 0, self.width - 1, self.height - 1)
+
+    def to_dict(self) -> dict[str, Any]:
+        return (
+            {
+                k: v
+                for (k, v) in asdict(self).items()
+                if k in {"field_id", "height", "width", "pixel_area"}
+            }
+            | {
+                f"gpc_{s}": self.protein_box_sums[s][self.bounding_box()]
+                / self.yield_box_sums[s][self.bounding_box()]
+                for s in range(self.num_scenarios)
+            }
+            | (
+                {}
+                if self.coordinates is None
+                else {"lat": self.coordinates[0], "lon": self.coordinates[1]}
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -134,6 +171,13 @@ class PriceInfo:
         box_gpc = sfield.protein_box_sums[s][box] / box_yield
         return self.calculate_price(box_gpc, box_yield)
 
+    def price_box_in_field(self, box: Box, field: Field) -> float:
+        box_yield = field.yield_box_sums[box]
+        if box_yield < 0.001:
+            return 0.0
+        box_gpc = field.protein_box_sums[box] / box_yield
+        return self.calculate_price(box_gpc, box_yield)
+
 
 @dataclass(frozen=True)
 class ZoningConfig:
@@ -150,18 +194,17 @@ class MipConfig:
 
 
 @dataclass(frozen=True)
-class SolveInfo:
+class CGSolveInfo:
     total_solve_seconds: float
     column_generation_seconds: float
     column_generation_iterations: int
     total_variables: int
 
 
-Z = TypeVar("Z", bound=Zone | SZone)
+Z = TypeVar("Z", Zone, SZone)
 
 
 @dataclass(frozen=True)
 class Solution(Generic[Z]):
     zones: list[Z]
-    revenue: float
-    solve_info: Optional[SolveInfo] = None
+    revenue: float | list[float]

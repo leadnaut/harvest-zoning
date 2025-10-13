@@ -1,16 +1,22 @@
 import csv
 import os
+from dataclasses import asdict
 from math import floor, log10
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from zonings.data_processing import field_to_sfield, load_field
 from zonings.models import (
+    CGSolveInfo,
     Field,
     MipConfig,
     PriceInfo,
+    SField,
     Solution,
+    SZone,
+    Zone,
     ZoningConfig,
 )
 from zonings.solvers import CGMipSolver, CVarDynamicSolver, DynamicSolver
@@ -24,44 +30,39 @@ def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
     )
 
 
-def write_outputs(
-    field: Field,
-    solution: Solution,
+def output_results(
+    field: Field | SField,
+    solution: Solution[Zone] | Solution[SZone],
     pricing: PriceInfo,
     output_dir: Path,
     field_slug: str,
+    solve_info: CGSolveInfo | None = None,
 ) -> None:
-    whole_field = field.bounding_box()
-    whole_yield = field.yield_box_sums[whole_field]
-    whole_protein = field.protein_box_sums[whole_field]
-    kpis = {
-        "field_width": field.width,
-        "field_height": field.height,
-        "field_average_gpc": round(whole_protein / whole_yield, 4),
-        "optimal_revenue": round(solution.revenue, 2),
-        "zones_used": len(solution.zones),
-        "base_revenue": round(
-            pricing.calculate_price(whole_protein / whole_yield, whole_yield), 2
-        ),
-    }
-    if solution.solve_info:
-        kpis.update(
-            {
-                "solve_time": round(solution.solve_info.total_solve_seconds, 2),
-                "cg_time": round(
-                    solution.solve_info.column_generation_seconds, 2
-                ),
-                "cg_iters": solution.solve_info.column_generation_iterations,
-                "total_variables": solution.solve_info.total_variables,
-            }
-        )
-    if field.coordinates:
-        kpis.update(
-            {
-                "field_lat": field.coordinates[0],
-                "field_lon": field.coordinates[1],
-            }
-        )
+    kpis = field.to_dict()
+
+    # base revenue/s
+    if isinstance(solution.revenue, list) and isinstance(field, SField):
+        kpis |= {
+            f"solution_{s}": solution.revenue[s]
+            for s in range(field.num_scenarios)
+        }
+        kpis |= {
+            f"base_{s}": pricing.price_box_in_sfield(
+                field.bounding_box(), field, s
+            )
+            for s in range(field.num_scenarios)
+        }
+
+    elif isinstance(solution.revenue, float) and isinstance(field, Field):
+        kpis |= {"solution": solution.revenue}
+        kpis |= {
+            "base": pricing.price_box_in_field(field.bounding_box(), field)
+        }
+    else:
+        raise TypeError()
+
+    if solve_info is not None:
+        kpis |= asdict(solve_info)
 
     with open(output_dir / f"{field_slug}_kpis.csv", "w") as file:
         writer = csv.DictWriter(file, kpis.keys())
@@ -69,18 +70,18 @@ def write_outputs(
         writer.writerow(kpis)
 
     with open(output_dir / f"{field_slug}_zones.csv", "w") as file:
-        writer = csv.DictWriter(file, ["x1", "y1", "x2", "y2", "score"])
-        writer.writeheader()
+        zones_info: list[dict[str, Any]] = []
         for z in solution.zones:
-            writer.writerow(
-                {
-                    "x1": z.box.x1,
-                    "y1": z.box.y1,
-                    "x2": z.box.x2,
-                    "y2": z.box.y2,
-                    "score": z.score,
-                }
-            )
+            if isinstance(z, Zone):
+                zones_info.append(asdict(z.box) | {"score": z.score})
+            elif isinstance(z, SZone):
+                zones_info.append(
+                    asdict(z.box)
+                    | {f"score_{s}": z.scores[s] for s in range(len(z.scores))}
+                )
+        writer = csv.DictWriter(file, zones_info[0].keys())
+        writer.writeheader()
+        writer.writerows(zones_info)
 
 
 def mip_pipeline(field_slug: str, output_dir: Path) -> None:
@@ -106,10 +107,10 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
     )
 
     mip = CGMipSolver(zones, 4, field, _guess_good_solve_parameters(len(zones)))
-    sol = mip.solve()
+    sol, info = mip.solve()
 
     # write outputs:
-    write_outputs(field, sol, pricing, output_dir, field_slug)
+    output_results(field, sol, pricing, output_dir, field_slug, solve_info=info)
 
 
 def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
@@ -136,7 +137,7 @@ def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
     )
     sol = solver.solve()
 
-    write_outputs(field, sol, pricing, output_dir, field_slug)
+    output_results(field, sol, pricing, output_dir, field_slug)
 
 
 def sdynamic_pipeline(field_slug: str, output_dir: Path) -> None:

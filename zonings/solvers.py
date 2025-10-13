@@ -6,11 +6,11 @@ from typing import Any, Generic, Optional, TypeVar
 import gurobipy as gp
 
 from zonings.models import (
+    CGSolveInfo,
     Field,
     MipConfig,
     SField,
     Solution,
-    SolveInfo,
     SZone,
     Zone,
     ZoningConfig,
@@ -106,7 +106,7 @@ class CGMipSolver:
             return None
         return [i.variable for i in best_zones], positive_rc_zones
 
-    def solve(self) -> Solution[Zone]:
+    def solve(self) -> tuple[Solution[Zone], CGSolveInfo]:
         print("Beginning column generation")
         solve_start_t = time()
         cg_iterations = 0
@@ -136,12 +136,11 @@ class CGMipSolver:
         return Solution(
             [z for z in self.X if self.X[z].X > 0.01],
             self.model.ObjVal,
-            SolveInfo(
-                total_solve_seconds=solve_end_t - solve_start_t,
-                column_generation_seconds=cg_end_t - solve_start_t,
-                column_generation_iterations=cg_iterations,
-                total_variables=len(self.X),
-            ),
+        ), CGSolveInfo(
+            total_solve_seconds=solve_end_t - solve_start_t,
+            column_generation_seconds=cg_end_t - solve_start_t,
+            column_generation_iterations=cg_iterations,
+            total_variables=len(self.X),
         )
 
 
@@ -254,7 +253,7 @@ class StochasticCGMipSolver:
             return None
         return [i.variable for i in best_zones], positive_rc_zones
 
-    def solve(self) -> Solution[SZone]:
+    def solve(self) -> tuple[Solution[SZone], CGSolveInfo]:
         print("Beginning column generation")
         solve_start_t = time()
         cg_iterations = 0
@@ -284,10 +283,17 @@ class StochasticCGMipSolver:
         self.model.optimize()
         solve_end_t = time()
 
-        return Solution(
-            [z for z in self.X if self.X[z].X > 0.01],
-            self.model.ObjVal,
-            SolveInfo(
+        zones = [z for z in self.X if self.X[z].X > 0.01]
+
+        return (
+            Solution(
+                zones,
+                [
+                    sum(z.scores[s] for z in zones)
+                    for s in range(self.num_scenarios)
+                ],
+            ),
+            CGSolveInfo(
                 total_solve_seconds=solve_end_t - solve_start_t,
                 column_generation_seconds=cg_end_t - solve_start_t,
                 column_generation_iterations=cg_iterations,
@@ -382,12 +388,6 @@ class DynamicSolver:
         return Solution(
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
-            SolveInfo(
-                toc - tic,
-                0,
-                0,
-                0,
-            ),
         )
 
 
@@ -518,4 +518,4 @@ class CVarDynamicSolver:
             historical_cvar_scenarios.append(new_cvar_scenarios)
             self.lookup = {}
 
-        return Solution([SZone(b, []) for b in proposed_solution[1]], 0, None)
+        return Solution([SZone(b, []) for b in proposed_solution[1]], 0)

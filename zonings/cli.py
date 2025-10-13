@@ -58,16 +58,9 @@ def cvar_mip_solve(field_slug: str):
         field,
         MipConfig(),
     )
-    sol = solver.solve()
-    scores = []
-    for s in range(field.num_scenarios):
-        scores.append(
-            sum(
-                DEFAULT_PRICING.price_box_in_sfield(z.box, field, s)
-                for z in sol.zones
-            )
-        )
-    print(sum(sorted(scores)[:10]) / 10)
+    sol, info = solver.solve()
+    assert isinstance(sol.revenue, list)
+    print(sum(sorted(sol.revenue)[:10]) / 10)
     print(sol.zones)
 
 
