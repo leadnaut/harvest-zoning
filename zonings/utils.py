@@ -39,6 +39,16 @@ class Box:
             )
         raise ValueError("Cut out of bounds")
 
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, Box):
+            raise NotImplementedError()
+        return (self.x1, self.y1, self.x2, self.y2) < (
+            other.x1,
+            other.y1,
+            other.x2,
+            other.y2,
+        )
+
 
 def no_numpy(value) -> Any:
     return getattr(value, "tolist", lambda: value)()

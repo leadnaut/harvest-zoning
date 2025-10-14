@@ -396,6 +396,7 @@ class CVarDynamicSolver:
         self,
         field: SField,
         max_zones: int,
+        alpha: float,
         config: ZoningConfig,
         time_out: Optional[float] = None,
     ) -> None:
@@ -407,35 +408,26 @@ class CVarDynamicSolver:
         self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
         self.solve_start = 0.0
         self.cache_hits = 0
-        self.cvar_scenarios: set[int] = set()
+        self.cvar_scenarios: int = int(alpha * self.field.num_scenarios)
 
     def _score_box(self, box: Box) -> float:
-        cvar_scenario_score = 0.0
-        pseudo_var = 0.0
-        for s in self.cvar_scenarios:
-            score = self.config.pricing.price_box_in_sfield(box, self.field, s)
-            cvar_scenario_score += score
-            pseudo_var = max(pseudo_var, score)
-
-        positive_revenue = 0.0
-        for s in range(self.field.num_scenarios):
-            positive_revenue += max(
-                pseudo_var
-                - self.config.pricing.price_box_in_sfield(box, self.field, s),
-                0,
+        # average
+        return (
+            sum(
+                self.config.pricing.price_box_in_sfield(box, self.field, s)
+                for s in range(self.field.num_scenarios)
             )
-        positive_revenue /= self.field.num_scenarios
-        return pseudo_var - (
-            positive_revenue
-            / (1 - len(self.cvar_scenarios) / self.field.num_scenarios)
+            / self.field.num_scenarios
         )
 
     def _combine_solution(
         self, s1: tuple[float, list[Box]], s2: tuple[float, list[Box]]
     ) -> tuple[float, list[Box]]:
-        return (s1[0] + s2[0], s1[1] + s2[1])
+        return (s1[0] + s2[0], sorted(s1[1] + s2[1]))
 
-    def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
+    def zone_box(
+        self, box: Box, n_zones: int, top_level: bool = False
+    ) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
         if (
             self.time_out is not None
@@ -469,53 +461,34 @@ class CVarDynamicSolver:
                 for b1, b2 in horizontal_splits + vertical_splits
                 for n1 in range(1, n_zones)
             )
-            result = max(
-                split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1]))
-            )
+            if top_level:
+                result = max(
+                    split_values,
+                    key=lambda tup: sum(
+                        sorted(
+                            sum(
+                                self.config.pricing.price_box_in_sfield(
+                                    b, self.field, s
+                                )
+                                for b in tup[1]
+                            )
+                            for s in range(self.field.num_scenarios)
+                        )[: self.cvar_scenarios]
+                    )
+                    / self.cvar_scenarios,
+                )
+            else:
+                result = max(
+                    split_values,
+                    key=lambda tup: (round(tup[0], 2), -len(tup[1])),
+                )
 
         self.lookup[box, n_zones] = result
         return result
 
-    def solve(self, cvar_alpha: float) -> Solution:
-        n_cvar_scenarios = int(self.field.num_scenarios * cvar_alpha)
-        self.cvar_scenarios = set(
-            range(n_cvar_scenarios)
-        )  # take the first n as a guess
+    def solve(self) -> Solution[SZone]:
+        result = self.zone_box(self.field.bounding_box(), self.max_zones, True)
 
-        historical_cvar_scenarios = [set(range(n_cvar_scenarios))]
-        while True:
-            print(self.cvar_scenarios)
-            proposed_solution = self.zone_box(
-                self.field.bounding_box(), self.max_zones
-            )
-            scenario_scores: list[tuple[float, int]] = []
-            for s in range(self.field.num_scenarios):
-                scenario_scores.append(
-                    (
-                        sum(
-                            self.config.pricing.price_box_in_sfield(
-                                b, self.field, s
-                            )
-                            for b in proposed_solution[1]
-                        ),
-                        s,
-                    )
-                )
+        print(result)
 
-            worst_alpha_scores = sorted(scenario_scores)[:n_cvar_scenarios]
-
-            print(
-                sum(score for (score, _) in worst_alpha_scores)
-                / n_cvar_scenarios
-            )
-            print(proposed_solution[1])
-
-            new_cvar_scenarios = set(s for (_, s) in worst_alpha_scores)
-            if new_cvar_scenarios in historical_cvar_scenarios:
-                break
-
-            self.cvar_scenarios = new_cvar_scenarios
-            historical_cvar_scenarios.append(new_cvar_scenarios)
-            self.lookup = {}
-
-        return Solution([SZone(b, []) for b in proposed_solution[1]], 0)
+        return Solution([SZone(b, []) for b in result[1]], 0)

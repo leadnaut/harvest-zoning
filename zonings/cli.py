@@ -41,7 +41,7 @@ def dynamic_solve_field(field_slug: str, output: Path):
 @cli.command()
 @click.argument("field_slug")
 @click.argument("output", type=click.Path(writable=True, path_type=Path))
-def cvar_solve_field(field_slug: str, output: Path):
+def sdynamic_solve_field(field_slug: str, output: Path):
     sdynamic_pipeline(field_slug, output)
 
 
