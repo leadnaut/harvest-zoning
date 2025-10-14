@@ -69,8 +69,8 @@ def _zone_gen(
     zones: list[Zone] | list[SZone] = []
     for i, b in enumerate(boxes):
         zones.append(blender(b))  # type: ignore
-        if i % 10000 == 0:
-            print(f"{i / nboxes:.2f}%", end="\r")
+        if i % 1000 == 0:
+            print(f"{i / nboxes * 100:.2f}%", end="\r")
 
     return zones
 

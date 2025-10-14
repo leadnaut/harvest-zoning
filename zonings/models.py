@@ -105,7 +105,7 @@ class SField:
         return (
             {
                 k: v
-                for (k, v) in asdict(self).items()
+                for (k, v) in self.__dict__.items()
                 if k in {"field_id", "height", "width", "pixel_area"}
             }
             | {
@@ -119,6 +119,9 @@ class SField:
                 else {"lat": self.coordinates[0], "lon": self.coordinates[1]}
             )
         )
+
+    def __hash__(self) -> int:
+        return hash(self.field_id)
 
 
 @dataclass(frozen=True)

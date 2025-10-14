@@ -7,7 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from zonings.data_processing import field_to_sfield, load_field
+from zonings.constants import DEFAULT_PRICING
+from zonings.data_processing import field_to_sfield, load_field, load_sfield
 from zonings.models import (
     CGSolveInfo,
     Field,
@@ -19,8 +20,13 @@ from zonings.models import (
     Zone,
     ZoningConfig,
 )
-from zonings.solvers import CGMipSolver, CVarDynamicSolver, DynamicSolver
-from zonings.zoning import make_zones
+from zonings.solvers import (
+    CGMipSolver,
+    CVarDynamicSolver,
+    DynamicSolver,
+    StochasticCGMipSolver,
+)
+from zonings.zoning import make_szones, make_zones
 
 
 def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
@@ -111,6 +117,27 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
 
     # write outputs:
     output_results(field, sol, pricing, output_dir, field_slug, solve_info=info)
+
+
+def stochastic_mip_pipeline(field_slug, output_dir: Path) -> None:
+    if not output_dir.exists():
+        os.mkdir(output_dir)
+
+    if (output_dir / f"{field_slug}_kpis.csv").exists():
+        return
+
+    try:
+        field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
+    except FileNotFoundError as e:
+        print(e.args)
+        return None
+    zones = make_szones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
+
+    solver = StochasticCGMipSolver(zones, 4, 0.2, 0, field, MipConfig())
+
+    sol, info = solver.solve()
+
+    output_results(field, sol, DEFAULT_PRICING, output_dir, field_slug, info)
 
 
 def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
