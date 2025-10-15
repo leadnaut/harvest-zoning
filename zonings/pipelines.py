@@ -8,9 +8,10 @@ from typing import Any
 import numpy as np
 
 from zonings.constants import DEFAULT_PRICING
-from zonings.data_processing import field_to_sfield, load_field, load_sfield
+from zonings.data_processing import load_field, load_sfield
 from zonings.models import (
     CGSolveInfo,
+    DPSolveInfo,
     Field,
     MipConfig,
     PriceInfo,
@@ -42,7 +43,7 @@ def output_results(
     pricing: PriceInfo,
     output_dir: Path,
     field_slug: str,
-    solve_info: CGSolveInfo | None = None,
+    solve_info: CGSolveInfo | DPSolveInfo | None = None,
 ) -> None:
     kpis = field.to_dict()
 
@@ -90,7 +91,7 @@ def output_results(
         writer.writerows(zones_info)
 
 
-def mip_pipeline(field_slug: str, output_dir: Path) -> None:
+def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
 
@@ -112,14 +113,18 @@ def mip_pipeline(field_slug: str, output_dir: Path) -> None:
         ),
     )
 
-    mip = CGMipSolver(zones, 4, field, _guess_good_solve_parameters(len(zones)))
+    mip = CGMipSolver(
+        zones, nzones, field, _guess_good_solve_parameters(len(zones))
+    )
     sol, info = mip.solve()
 
     # write outputs:
     output_results(field, sol, pricing, output_dir, field_slug, solve_info=info)
 
 
-def stochastic_mip_pipeline(field_slug, output_dir: Path) -> None:
+def stochastic_mip_pipeline(
+    field_slug, output_dir: Path, nzones: int = 4, alpha: float = 0.2
+) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
 
@@ -127,20 +132,23 @@ def stochastic_mip_pipeline(field_slug, output_dir: Path) -> None:
         return
 
     try:
+        np.random.seed(2025)
         field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
     except FileNotFoundError as e:
         print(e.args)
         return None
     zones = make_szones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
 
-    solver = StochasticCGMipSolver(zones, 4, 0.2, 0, field, MipConfig())
+    solver = StochasticCGMipSolver(zones, nzones, alpha, 0, field, MipConfig())
 
     sol, info = solver.solve()
 
     output_results(field, sol, DEFAULT_PRICING, output_dir, field_slug, info)
 
 
-def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
+def dynamic_pipeline(
+    field_slug: str, output_dir: Path, nzones: int = 4
+) -> None:
     if not output_dir.exists():
         os.mkdir(output_dir)
 
@@ -152,32 +160,37 @@ def dynamic_pipeline(field_slug: str, output_dir: Path) -> None:
     except FileNotFoundError as e:
         print(e.args)
         return
-    pricing = PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )
 
     solver = DynamicSolver(
         field,
-        5,
-        ZoningConfig(3, 3, pricing, int(field.width * field.height * 0.1)),
+        nzones,
+        ZoningConfig(3, 3, DEFAULT_PRICING),
         600,
     )
-    sol = solver.solve()
+    sol, info = solver.solve()
 
-    output_results(field, sol, pricing, output_dir, field_slug)
+    output_results(field, sol, DEFAULT_PRICING, output_dir, field_slug, info)
 
 
-def sdynamic_pipeline(field_slug: str, output_dir: Path) -> None:
-    np.random.seed(2025)
+def stochastic_dynamic_pipeline(
+    field_slug: str, output_dir: Path, nzones: int = 4, alpha: float = 0.2
+) -> None:
+    if not output_dir.exists():
+        os.mkdir(output_dir)
+
+    if (output_dir / f"{field_slug}_kpis.csv").exists():
+        return
+
     try:
-        field = field_to_sfield(load_field(field_slug, 2), 0.56, 0.4, 50)
+        np.random.seed(2025)
+        field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
     except FileNotFoundError as e:
         print(e.args)
         return
 
     solver = CVarDynamicSolver(
-        field, 4, 0.2, ZoningConfig(3, 3, DEFAULT_PRICING)
+        field, nzones, alpha, ZoningConfig(3, 3, DEFAULT_PRICING), 600
     )
-    sol = solver.solve()
+    sol, info = solver.solve()
 
-    print(sol.zones)
+    output_results(field, sol, DEFAULT_PRICING, output_dir, field_slug, info)

@@ -204,6 +204,13 @@ class CGSolveInfo:
     total_variables: int
 
 
+@dataclass(frozen=True)
+class DPSolveInfo:
+    total_solve_seconds: float
+    lookup_size: int
+    lookup_hits: int
+
+
 Z = TypeVar("Z", Zone, SZone)
 
 

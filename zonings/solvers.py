@@ -7,6 +7,7 @@ import gurobipy as gp
 
 from zonings.models import (
     CGSolveInfo,
+    DPSolveInfo,
     Field,
     MipConfig,
     SField,
@@ -373,7 +374,7 @@ class DynamicSolver:
         self.lookup[box, n_zones] = result
         return result
 
-    def solve(self) -> Solution[Zone]:
+    def solve(self) -> tuple[Solution[Zone], DPSolveInfo]:
         print(f"Starting dynamic programming solve for {self.field.field_id}")
         tic = time()
         if self.timeout is not None:
@@ -388,7 +389,7 @@ class DynamicSolver:
         return Solution(
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
-        )
+        ), DPSolveInfo(toc - tic, len(self.lookup), self.cache_hits)
 
 
 class CVarDynamicSolver:
@@ -398,26 +399,27 @@ class CVarDynamicSolver:
         max_zones: int,
         alpha: float,
         config: ZoningConfig,
-        time_out: Optional[float] = None,
+        timeout: Optional[float] = None,
     ) -> None:
         self.field = field
         self.max_zones = max_zones
         self.config = config
-        self.time_out = time_out
+        self.timeout = timeout
 
         self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
         self.solve_start = 0.0
         self.cache_hits = 0
-        self.cvar_scenarios: int = int(alpha * self.field.num_scenarios)
+        self.total_scenarios = self.field.num_scenarios
+        self.cvar_scenarios = int(alpha * self.total_scenarios)
 
     def _score_box(self, box: Box) -> float:
         # average
         return (
             sum(
                 self.config.pricing.price_box_in_sfield(box, self.field, s)
-                for s in range(self.field.num_scenarios)
+                for s in range(self.total_scenarios)
             )
-            / self.field.num_scenarios
+            / self.total_scenarios
         )
 
     def _combine_solution(
@@ -430,8 +432,8 @@ class CVarDynamicSolver:
     ) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
         if (
-            self.time_out is not None
-            and time() - self.solve_start > self.time_out
+            self.timeout is not None
+            and time() - self.solve_start > self.timeout
         ):
             return (0, [])
 
@@ -472,7 +474,7 @@ class CVarDynamicSolver:
                                 )
                                 for b in tup[1]
                             )
-                            for s in range(self.field.num_scenarios)
+                            for s in range(self.total_scenarios)
                         )[: self.cvar_scenarios]
                     )
                     / self.cvar_scenarios,
@@ -486,9 +488,32 @@ class CVarDynamicSolver:
         self.lookup[box, n_zones] = result
         return result
 
-    def solve(self) -> Solution[SZone]:
-        result = self.zone_box(self.field.bounding_box(), self.max_zones, True)
-
-        print(result)
-
-        return Solution([SZone(b, []) for b in result[1]], 0)
+    def solve(self) -> tuple[Solution[SZone], DPSolveInfo]:
+        print(f"Starting dynamic programming solve for {self.field.field_id}")
+        tic = time()
+        if self.timeout is not None:
+            self.solve_start = tic
+        self.cache_hits = 0
+        self.lookup = {}
+        val, boxes = self.zone_box(self.field.bounding_box(), self.max_zones)
+        toc = time()
+        print(
+            f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits"
+        )
+        zones = [
+            SZone(
+                b,
+                [
+                    self.config.pricing.price_box_in_sfield(b, self.field, s)
+                    for s in range(self.total_scenarios)
+                ],
+            )
+            for b in boxes
+        ]
+        return Solution(
+            zones,
+            [
+                sum(z.scores[s] for z in zones)
+                for s in range(self.total_scenarios)
+            ],
+        ), DPSolveInfo(toc - tic, len(self.lookup), self.cache_hits)

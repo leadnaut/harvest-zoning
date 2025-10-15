@@ -1,80 +1,106 @@
+import csv
 import io
 from pathlib import Path
 
 import click
-import numpy as np
 
-from zonings.data_processing import load_field, load_sfield
 from zonings.pipelines import (
     dynamic_pipeline,
     mip_pipeline,
-    sdynamic_pipeline,
+    stochastic_dynamic_pipeline,
     stochastic_mip_pipeline,
 )
 
 
 @click.group
 def cli():
+    """Zones fields using different algorithms"""
     pass
 
 
 @cli.command()
+@click.argument("solve_type", type=click.Choice(["mip", "dp", "smip", "sdp"]))
 @click.argument("field_slug")
-def read_field(field_slug: str):
-    f = load_field(field_slug, 2)
+@click.argument("output_dir", type=click.Path(writable=True, path_type=Path))
+@click.option(
+    "--alpha",
+    "-a",
+    type=float,
+    default=0.2,
+    help="alpha-cvar level. does nothing with non-stochastic solvers",
+)
+@click.option(
+    "--num_zones",
+    "-n",
+    type=int,
+    default=4,
+    help="maximum number of zones in the solution",
+)
+def solve(
+    solve_type: str,
+    field_slug: str,
+    output_dir: Path,
+    alpha: float,
+    num_zones: int,
+):
+    """zones a single field"""
+    match solve_type:
+        case "mip":
+            mip_pipeline(field_slug, output_dir, nzones=num_zones)
+        case "dp":
+            dynamic_pipeline(field_slug, output_dir, nzones=num_zones)
+        case "smip":
+            stochastic_mip_pipeline(
+                field_slug, output_dir, alpha=alpha, nzones=num_zones
+            )
+        case "sdp":
+            stochastic_dynamic_pipeline(
+                field_slug, output_dir, alpha=alpha, nzones=num_zones
+            )
+        case _:
+            raise NotImplementedError("Unreachable")
 
 
 @cli.command()
-@click.argument("field_slug")
-@click.argument("output", type=click.Path(writable=True, path_type=Path))
-def mip_solve_field(field_slug: str, output: Path):
-    mip_pipeline(field_slug, output)
-
-
-@cli.command()
-@click.argument("field_slug")
-@click.argument("output", type=click.Path(writable=True, path_type=Path))
-def dynamic_solve_field(field_slug: str, output: Path):
-    dynamic_pipeline(field_slug, output)
-
-
-@cli.command()
-@click.argument("field_slug")
-@click.argument("output", type=click.Path(writable=True, path_type=Path))
-def sdynamic_solve_field(field_slug: str, output: Path):
-    sdynamic_pipeline(field_slug, output)
-
-
-@cli.command()
-@click.argument("field_slug")
-@click.argument("output", type=click.Path(writable=True, path_type=Path))
-def cvar_mip_solve(field_slug: str, output: Path):
-    np.random.seed(2025)
-    stochastic_mip_pipeline(field_slug, output)
-
-
-@cli.command()
-@click.argument("solve_type", type=click.Choice(["mip", "dynamic", "smip"]))
+@click.argument("solve_type", type=click.Choice(["mip", "dp", "smip"]))
 @click.argument("field_list", type=click.File())
 @click.argument("output_dir", type=click.Path(writable=True, path_type=Path))
 def solve_batch(
     solve_type: str, field_list: io.TextIOWrapper, output_dir: Path
 ):
+    """zones a lit of fields"""
     for slug in field_list:
         if slug.startswith("#"):  # commented out
             continue
         if solve_type == "mip":
             mip_pipeline(slug.strip(), output_dir)
-        elif solve_type == "dynamic":
+        elif solve_type == "dp":
             dynamic_pipeline(slug.strip(), output_dir)
         elif solve_type == "smip":
             stochastic_mip_pipeline(slug.strip(), output_dir)
 
 
-@cli.command()
-def debug():
-    field = load_sfield("cy2022_3", 2, 0.56, 0.4, 5)
-    field.to_dict()
+@cli.command(hidden=True)
+@click.argument("field_slug")
+@click.argument("alpha", type=float)
+def debug(field_slug: str, alpha: float):
+    with open(f"data/outs_smip/{field_slug}_kpis.csv", "r", newline="") as f:
+        reader = csv.DictReader(f)
+        row = next(reader)
+        sol_scores = [
+            float(v) for k, v in row.items() if k.startswith("solution")
+        ]
+        base_scores = [float(v) for k, v in row.items() if k.startswith("base")]
+
+        cvar_scenarios = int(alpha * len(sol_scores))
+        print(
+            "solution cvar:",
+            sum(sorted(sol_scores)[:cvar_scenarios]) / cvar_scenarios,
+        )
+        print(
+            "baseline_cvar:",
+            sum(sorted(base_scores)[:cvar_scenarios]) / cvar_scenarios,
+        )
 
 
 # @cli.command()
