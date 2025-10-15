@@ -133,7 +133,9 @@ def stochastic_mip_pipeline(
 
     try:
         np.random.seed(2025)
-        field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
+        field = load_sfield(
+            field_slug=field_slug, merge_size=2, num_scenarios=50
+        )
     except FileNotFoundError as e:
         print(e.args)
         return None
@@ -183,7 +185,9 @@ def stochastic_dynamic_pipeline(
 
     try:
         np.random.seed(2025)
-        field = load_sfield(field_slug, 2, 0.56, 0.4, 50)
+        field = load_sfield(
+            field_slug=field_slug, merge_size=2, num_scenarios=50
+        )
     except FileNotFoundError as e:
         print(e.args)
         return

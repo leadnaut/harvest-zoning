@@ -6,9 +6,11 @@ from geopy.distance import geodesic  # type: ignore
 from rasterio.errors import RasterioIOError  # type: ignore
 
 from zonings.constants import (
+    GPC_ERROR,
     KM2_TO_HA,
     MAP_PIXEL_TOL_KM,
     PROTEIN_FILE_PATH_FORMAT,
+    YIELD_ERROR_TONNES_PER_HA,
     YIELD_FILE_PATH_FORMAT,
 )
 from zonings.models import Field, SField
@@ -165,15 +167,25 @@ def field_to_sfield(
     gpc_maps = []
     field_mask = np.asarray(field.field_map)
     for _ in range(num_scenarios):
-        y_map = np.add(
-            field.yield_map,
-            np.random.normal(0, yield_error, (field.height, field.width))
-            * field_mask,
+        y_map = np.maximum(
+            np.add(
+                field.yield_map,
+                np.random.normal(
+                    0,
+                    yield_error * field.pixel_area * KM2_TO_HA,
+                    (field.height, field.width),
+                )
+                * field_mask,
+            ),
+            np.zeros_like(field_mask),
         )
-        g_map = np.add(
-            field.gpc_map,
-            np.random.normal(0, gpc_error, (field.height, field.width))
-            * field_mask,
+        g_map = np.maximum(
+            np.add(
+                field.gpc_map,
+                np.random.normal(0, gpc_error, (field.height, field.width))
+                * field_mask,
+            ),
+            np.zeros_like(field_mask),
         )
         yield_maps.append(no_numpy(y_map))
         gpc_maps.append(no_numpy(g_map))
@@ -192,10 +204,11 @@ def field_to_sfield(
 
 
 def load_sfield(
+    *,
     field_slug: str,
     merge_size: int,
-    yield_error: float,
-    gpc_error: float,
+    yield_error: float = YIELD_ERROR_TONNES_PER_HA,
+    gpc_error: float = GPC_ERROR,
     num_scenarios: int,
 ) -> SField:
     field = load_field(field_slug, merge_size, True)

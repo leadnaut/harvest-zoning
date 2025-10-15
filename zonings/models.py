@@ -162,6 +162,8 @@ class PriceInfo:
         return list(zip(self.protein_minimums, self.price_per_tonnes))
 
     def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
+        if gpc < 0:
+            raise ValueError("negative gpc")
         for protein, price in self.reversed_lookup:
             if gpc > protein:
                 return price * yield_tonnes
