@@ -1,5 +1,4 @@
 import csv
-import os
 from dataclasses import asdict
 from math import floor, log10
 from pathlib import Path
@@ -93,7 +92,7 @@ def output_results(
 
 def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
     if not output_dir.exists():
-        os.mkdir(output_dir)
+        output_dir.mkdir(parents=True)
 
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
@@ -126,7 +125,7 @@ def stochastic_mip_pipeline(
     field_slug, output_dir: Path, nzones: int = 4, alpha: float = 0.2
 ) -> None:
     if not output_dir.exists():
-        os.mkdir(output_dir)
+        output_dir.mkdir(parents=True)
 
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
@@ -152,7 +151,7 @@ def dynamic_pipeline(
     field_slug: str, output_dir: Path, nzones: int = 4
 ) -> None:
     if not output_dir.exists():
-        os.mkdir(output_dir)
+        output_dir.mkdir(parents=True)
 
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
@@ -178,7 +177,7 @@ def stochastic_dynamic_pipeline(
     field_slug: str, output_dir: Path, nzones: int = 4, alpha: float = 0.2
 ) -> None:
     if not output_dir.exists():
-        os.mkdir(output_dir)
+        output_dir.mkdir(parents=True)
 
     if (output_dir / f"{field_slug}_kpis.csv").exists():
         return
@@ -193,7 +192,7 @@ def stochastic_dynamic_pipeline(
         return
 
     solver = CVarDynamicSolver(
-        field, nzones, alpha, ZoningConfig(3, 3, DEFAULT_PRICING), 600
+        field, nzones, alpha, ZoningConfig(3, 3, DEFAULT_PRICING), 1200
     )
     sol, info = solver.solve()
 

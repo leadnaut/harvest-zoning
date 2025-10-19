@@ -62,22 +62,46 @@ def solve(
 
 
 @cli.command()
-@click.argument("solve_type", type=click.Choice(["mip", "dp", "smip"]))
+@click.argument("solve_type", type=click.Choice(["mip", "dp", "smip", "sdp"]))
 @click.argument("field_list", type=click.File())
 @click.argument("output_dir", type=click.Path(writable=True, path_type=Path))
+@click.option(
+    "--alpha",
+    "-a",
+    type=float,
+    default=0.2,
+    help="alpha-cvar level. does nothing with non-stochastic solvers (default 0.2)",
+)
+@click.option(
+    "--num_zones",
+    "-n",
+    type=int,
+    default=4,
+    help="maximum number of zones in the solution (default 4)",
+)
 def solve_batch(
-    solve_type: str, field_list: io.TextIOWrapper, output_dir: Path
+    solve_type: str,
+    field_list: io.TextIOWrapper,
+    output_dir: Path,
+    alpha: float,
+    num_zones: int,
 ):
-    """zones a lit of fields"""
+    """zones a list of fields"""
     for slug in field_list:
         if slug.startswith("#"):  # commented out
             continue
         if solve_type == "mip":
-            mip_pipeline(slug.strip(), output_dir)
+            mip_pipeline(slug.strip(), output_dir, nzones=num_zones)
         elif solve_type == "dp":
-            dynamic_pipeline(slug.strip(), output_dir)
+            dynamic_pipeline(slug.strip(), output_dir, nzones=num_zones)
         elif solve_type == "smip":
-            stochastic_mip_pipeline(slug.strip(), output_dir)
+            stochastic_mip_pipeline(
+                slug.strip(), output_dir, nzones=num_zones, alpha=alpha
+            )
+        elif solve_type == "sdp":
+            stochastic_dynamic_pipeline(
+                slug.strip(), output_dir, nzones=num_zones, alpha=alpha
+            )
 
 
 @cli.command(hidden=True)

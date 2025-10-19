@@ -212,4 +212,8 @@ def load_sfield(
     num_scenarios: int,
 ) -> SField:
     field = load_field(field_slug, merge_size, True)
+    if field.width + field.height >= 200:
+        print(
+            f"Field {field_slug} is large (dimensions: {field.width} x {field.height})"
+        )
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)
