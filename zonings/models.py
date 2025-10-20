@@ -4,7 +4,7 @@ from typing import Any, Generator, Generic, Optional, TypeVar
 
 import numpy as np
 
-from zonings.utils import Box, calculate_box_sums
+from zonings.utils import Box, BoxDataLookup, calculate_box_sums
 
 T = TypeVar("T")
 ListGrid = list[list[T]]
@@ -22,9 +22,9 @@ class Field:
     coordinates: Optional[tuple[float, float]] = None
     skip_init: bool = False
 
-    field_box_sums: dict[Box, int] = field(init=False)
-    yield_box_sums: dict[Box, float] = field(init=False)
-    protein_box_sums: dict[Box, float] = field(init=False)
+    field_box_sums: BoxDataLookup[int] = field(init=False)
+    yield_box_sums: BoxDataLookup[float] = field(init=False)
+    protein_box_sums: BoxDataLookup[float] = field(init=False)
 
     def __post_init__(self) -> None:
         if self.skip_init:
@@ -74,11 +74,11 @@ class SField:
     gpc_maps: list[ListGrid[float]]
     coordinates: Optional[tuple[float, float]] = None
 
-    field_box_sums: dict[Box, int] = field(init=False)
-    yield_box_sums: list[dict[Box, float]] = field(
+    field_box_sums: BoxDataLookup[int] = field(init=False)
+    yield_box_sums: list[BoxDataLookup[float]] = field(
         default_factory=list, init=False
     )
-    protein_box_sums: list[dict[Box, float]] = field(
+    protein_box_sums: list[BoxDataLookup[float]] = field(
         default_factory=list, init=False
     )
 

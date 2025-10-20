@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 import numpy as np
 
@@ -54,69 +54,43 @@ def no_numpy(value) -> Any:
     return getattr(value, "tolist", lambda: value)()
 
 
+@dataclass(frozen=True)
+class BoxDataLookup(Generic[NumberT]):
+    """data should contain a value per possible box such that the value for box
+    x1,y1,x2,y2 is at `data[y1 * max_y + y2][x1 * max_x + x2]`. data can contain
+    junk data for invalid boxes (i.e. if x2 < x1)."""
+
+    data: NDArray
+    max_x: int
+    max_y: int
+
+    def __getitem__(self, b: Box) -> NumberT:
+        return self.data[b.y1 * self.max_y + b.y2][b.x1 * self.max_x + b.x2]
+
+
 def subsequence_sums(
-    sequence: list[SummableT],
-) -> dict[tuple[int, int], SummableT]:
-    """calculates the sums of all possible subsequences of an array and returns a
-    lookup dictionary where lookup[i, j] is the sum of elements between indices
-    i and j inclusive"""
-    seq_len = len(sequence)
-    sums: list[NDArray] = [
+    seq: list[SummableT],
+) -> NDArray:
+    """calculates the sums of all possible subsequences of an array and returns
+    a lookup array where `lookup[i * len(seq) + j]` is the sum of elements
+    between indices i and j inclusive"""
+    seq_len = len(seq)
+    sums = [
         np.asarray(
-            [sum(sequence[x] for x in range(x2 + 1)) for x2 in range(seq_len)]
+            [sum(seq[x] for x in range(x2 + 1)) for x2 in range(seq_len)]
         )
     ]
-    prev_x1 = sequence[0]
+    prev_x1 = seq[0]
     for x1 in range(1, seq_len):
         sums.append(sums[-1] - prev_x1)
-        prev_x1 = sequence[x1]
+        prev_x1 = seq[x1]
 
-    return {
-        (x1, x2): no_numpy(sums[x1][x2])
-        for x1 in range(seq_len)
-        for x2 in range(x1, seq_len)
-    }
+    return np.concatenate(sums)
 
 
-def calculate_axis_sums(
-    grid: list[list[NumberT]], rows=True
-) -> dict[tuple[int, int, int], NumberT]:
-    if not rows:
-        grid = [
-            [grid[j][i] for i in range(len(grid[0]))] for j in range(len(grid))
-        ]
+def calculate_box_sums(grid: list[list[NumberT]]) -> BoxDataLookup[NumberT]:
+    row_sums = [subsequence_sums(row) for row in grid]
 
-    lookup: dict[tuple[int, int, int], NumberT] = {}
-    for i in range(len(grid)):
-        sums = subsequence_sums(grid[i])
-        lookup.update(((i, *k), sums[k]) for k in sums)
-
-    return lookup
-
-
-def calculate_box_sums(grid: list[list[NumberT]]) -> dict[Box, NumberT]:
-    (height, width) = (len(grid), len(grid[0]))
-    row_sums = calculate_axis_sums(grid)
-
-    row_sum_arrays = [
-        np.asarray(
-            list(
-                row_sums.get((y, x1, x2), 0)
-                for x1 in range(width)
-                for x2 in range(width)
-            )
-        )
-        for y in range(height)
-    ]
-
-    y_axis_lookup = subsequence_sums(row_sum_arrays)
-
-    lookup = {
-        Box(x1, y1, x2, y2): y_axis_lookup[y1, y2][x1 * width + x2]
-        for x1 in range(width)
-        for y1 in range(height)
-        for x2 in range(x1, width)
-        for y2 in range(y1, height)
-    }
-
-    return lookup
+    return BoxDataLookup(
+        subsequence_sums(row_sums), max_x=len(grid[0]), max_y=len(grid)
+    )

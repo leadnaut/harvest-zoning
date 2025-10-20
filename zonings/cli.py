@@ -10,6 +10,7 @@ from zonings.pipelines import (
     stochastic_dynamic_pipeline,
     stochastic_mip_pipeline,
 )
+from zonings.utils import Box, calculate_box_sums
 
 
 @click.group
@@ -125,6 +126,13 @@ def debug(field_slug: str, alpha: float):
             "baseline_cvar:",
             sum(sorted(base_scores)[:cvar_scenarios]) / cvar_scenarios,
         )
+
+
+@cli.command(hidden=True)
+def debug2():
+    grid = [[1, 2, 3, 4], [1, 2, 3, 4]]
+    lookup = calculate_box_sums(grid)
+    print(type(lookup[Box(1, 0, 3, 1)]))
 
 
 # @cli.command()
