@@ -14,7 +14,7 @@ from zonings.pipelines import (
     stochastic_dynamic_pipeline,
     stochastic_mip_pipeline,
 )
-from zonings.solvers import CVarDynamicSolver
+from zonings.solvers import StochasticDynamicSolver
 from zonings.visualisations import view_sfield_solution
 
 
@@ -79,6 +79,12 @@ def solve(
     help="alpha-cvar level. does nothing with non-stochastic solvers (default 0.2)",
 )
 @click.option(
+    "--cvar-weight-w",
+    type=float,
+    default=0.5,
+    help="weight given to cvar when optimising stochastic fields",
+)
+@click.option(
     "--num_zones",
     "-n",
     type=int,
@@ -90,6 +96,7 @@ def solve_batch(
     field_list: io.TextIOWrapper,
     output_dir: Path,
     alpha: float,
+    cvar_weight: float,
     num_zones: int,
 ):
     """zones a list of fields"""
@@ -136,15 +143,20 @@ def debug(field_slug: str, alpha: float):
 @cli.command(hidden=True)
 def debug2():
     np.random.seed(2025)
-    field = load_field("cy2022_3", 2)
+    field = load_field("cy2022_7", 2)
     sfield = field_to_sfield(field, 0.3, 0.0056, 50)
     print(
         field.protein_box_sums[field.bounding_box()]
         / field.yield_box_sums[field.bounding_box()]
     )
-    solution, _ = CVarDynamicSolver(
-        sfield, 4, 0.2, ZoningConfig(3, 3, DEFAULT_PRICING)
+    solution, _ = StochasticDynamicSolver(
+        field=sfield,
+        max_zones=4,
+        cvar_alpha=0.2,
+        expectation_weight=0,
+        config=ZoningConfig(3, 3, DEFAULT_PRICING),
     ).solve()
+
     print(solution)
     view_sfield_solution(sfield, solution, 0.2)
 

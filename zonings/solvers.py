@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from heapq import heappush, heapreplace
 from time import time
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar
 
 import gurobipy as gp
 
@@ -392,12 +392,14 @@ class DynamicSolver:
         ), DPSolveInfo(toc - tic, len(self.lookup), self.cache_hits)
 
 
-class CVarDynamicSolver:
+class StochasticDynamicSolver:
     def __init__(
         self,
+        *,
         field: SField,
         max_zones: int,
-        alpha: float,
+        cvar_alpha: float,
+        expectation_weight: float,
         config: ZoningConfig,
         timeout: Optional[float] = None,
     ) -> None:
@@ -410,26 +412,36 @@ class CVarDynamicSolver:
         self.solve_start = 0.0
         self.cache_hits = 0
         self.total_scenarios = self.field.num_scenarios
-        self.cvar_scenarios = int(alpha * self.total_scenarios)
+        self.cvar_scenarios = int(cvar_alpha * self.total_scenarios)
 
-    def _score_box(self, box: Box) -> float:
-        # average
-        return (
-            sum(
-                self.config.pricing.price_box_in_sfield(box, self.field, s)
-                for s in range(self.total_scenarios)
-            )
-            / self.total_scenarios
+        self.objective: Callable[[list[float]], float] = lambda scores: (
+            expectation_weight * sum(scores) / self.total_scenarios
+            + (1 - expectation_weight)
+            * sum(sorted(scores)[: self.cvar_scenarios])
+            / self.cvar_scenarios
         )
 
-    def _combine_solution(
+    def _score_box(self, box: Box) -> float:
+        # apply objective at every step
+        scores = [
+            self.config.pricing.price_box_in_sfield(box, self.field, s)
+            for s in range(self.total_scenarios)
+        ]
+        return self.objective(scores)
+
+    def _combine_and_score_sub_solutions(
         self, s1: tuple[float, list[Box]], s2: tuple[float, list[Box]]
     ) -> tuple[float, list[Box]]:
-        return (s1[0] + s2[0], sorted(s1[1] + s2[1]))
+        scores = [
+            sum(
+                self.config.pricing.price_box_in_sfield(b, self.field, s)
+                for b in s1[1] + s2[1]
+            )
+            for s in range(self.total_scenarios)
+        ]
+        return (self.objective(scores), sorted(s1[1] + s2[1]))
 
-    def zone_box(
-        self, box: Box, n_zones: int, top_level: bool = False
-    ) -> tuple[float, list[Box]]:
+    def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
         if (
             self.timeout is not None
@@ -457,33 +469,17 @@ class CVarDynamicSolver:
             horizontal_splits = [box.split(x=x) for x in range(box.x1, box.x2)]
             vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
             split_values.extend(
-                self._combine_solution(
+                self._combine_and_score_sub_solutions(
                     self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1)
                 )
                 for b1, b2 in horizontal_splits + vertical_splits
                 for n1 in range(1, n_zones)
             )
-            if top_level:
-                result = max(
-                    split_values,
-                    key=lambda tup: sum(
-                        sorted(
-                            sum(
-                                self.config.pricing.price_box_in_sfield(
-                                    b, self.field, s
-                                )
-                                for b in tup[1]
-                            )
-                            for s in range(self.total_scenarios)
-                        )[: self.cvar_scenarios]
-                    )
-                    / self.cvar_scenarios,
-                )
-            else:
-                result = max(
-                    split_values,
-                    key=lambda tup: (round(tup[0], 2), -len(tup[1])),
-                )
+
+            result = max(
+                split_values,
+                key=lambda tup: (round(tup[0], 2), -len(tup[1])),
+            )
 
         self.lookup[box, n_zones] = result
         return result

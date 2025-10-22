@@ -22,9 +22,9 @@ from zonings.models import (
 )
 from zonings.solvers import (
     CGMipSolver,
-    CVarDynamicSolver,
     DynamicSolver,
     StochasticCGMipSolver,
+    StochasticDynamicSolver,
 )
 from zonings.zoning import make_szones, make_zones
 
@@ -197,8 +197,13 @@ def stochastic_dynamic_pipeline(
         print(e.args)
         return
 
-    solver = CVarDynamicSolver(
-        field, nzones, alpha, ZoningConfig(3, 3, DEFAULT_PRICING), 1200
+    solver = StochasticDynamicSolver(
+        field=field,
+        max_zones=nzones,
+        cvar_alpha=alpha,
+        expectation_weight=0,
+        config=ZoningConfig(3, 3, DEFAULT_PRICING),
+        timeout=1200,
     )
     sol, info = solver.solve()
 
