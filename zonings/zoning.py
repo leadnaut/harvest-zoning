@@ -29,11 +29,7 @@ class SBlender:
         return SZone(
             box,
             [
-                self.price_info.calculate_price(
-                    self.field.protein_box_sums[s][box]
-                    / self.field.yield_box_sums[s][box],
-                    self.field.yield_box_sums[s][box],
-                )
+                self.price_info.price_box_in_sfield(box, self.field, s)
                 for s in range(self.field.num_scenarios)
             ],
         )

@@ -135,12 +135,16 @@ def stochastic_mip_pipeline(
         field = load_sfield(
             field_slug=field_slug, merge_size=2, num_scenarios=50
         )
+        if field is None:
+            return
     except FileNotFoundError as e:
         print(e.args)
         return None
     zones = make_szones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
 
-    solver = StochasticCGMipSolver(zones, nzones, alpha, 0, field, MipConfig())
+    solver = StochasticCGMipSolver(
+        zones, nzones, alpha, 0, field, _guess_good_solve_parameters(len(zones))
+    )
 
     sol, info = solver.solve()
 
@@ -187,6 +191,8 @@ def stochastic_dynamic_pipeline(
         field = load_sfield(
             field_slug=field_slug, merge_size=2, num_scenarios=50
         )
+        if field is None:
+            return
     except FileNotFoundError as e:
         print(e.args)
         return

@@ -3,14 +3,19 @@ import io
 from pathlib import Path
 
 import click
+import numpy as np
 
+from zonings.constants import DEFAULT_PRICING
+from zonings.data_processing import field_to_sfield, load_field
+from zonings.models import ZoningConfig
 from zonings.pipelines import (
     dynamic_pipeline,
     mip_pipeline,
     stochastic_dynamic_pipeline,
     stochastic_mip_pipeline,
 )
-from zonings.utils import Box, calculate_box_sums
+from zonings.solvers import CVarDynamicSolver
+from zonings.visualisations import view_sfield_solution
 
 
 @click.group
@@ -130,9 +135,18 @@ def debug(field_slug: str, alpha: float):
 
 @cli.command(hidden=True)
 def debug2():
-    grid = [[1, 2, 3, 4], [1, 2, 3, 4]]
-    lookup = calculate_box_sums(grid)
-    print(type(lookup[Box(1, 0, 3, 1)]))
+    np.random.seed(2025)
+    field = load_field("cy2022_3", 2)
+    sfield = field_to_sfield(field, 0.3, 0.0056, 50)
+    print(
+        field.protein_box_sums[field.bounding_box()]
+        / field.yield_box_sums[field.bounding_box()]
+    )
+    solution, _ = CVarDynamicSolver(
+        sfield, 4, 0.2, ZoningConfig(3, 3, DEFAULT_PRICING)
+    ).solve()
+    print(solution)
+    view_sfield_solution(sfield, solution, 0.2)
 
 
 # @cli.command()

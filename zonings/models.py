@@ -159,7 +159,11 @@ class PriceInfo:
 
     @cached_property
     def reversed_lookup(self) -> list[tuple[float, float]]:
-        return list(zip(self.protein_minimums, self.price_per_tonnes))
+        return list(
+            zip(
+                reversed(self.protein_minimums), reversed(self.price_per_tonnes)
+            )
+        )
 
     def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
         if gpc < 0:
@@ -178,7 +182,7 @@ class PriceInfo:
 
     def price_box_in_field(self, box: Box, field: Field) -> float:
         box_yield = field.yield_box_sums[box]
-        if box_yield < 0.001:
+        if box_yield < 0.0001:
             return 0.0
         box_gpc = field.protein_box_sums[box] / box_yield
         return self.calculate_price(box_gpc, box_yield)

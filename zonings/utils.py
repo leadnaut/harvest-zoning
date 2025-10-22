@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any, Generic, Optional, TypeVar
 
 import numpy as np
@@ -16,11 +17,17 @@ class Box:
     x2: int
     y2: int
 
+    @cached_property
     def width(self) -> int:
         return self.x2 - self.x1 + 1
 
+    @cached_property
     def height(self) -> int:
         return self.y2 - self.y1 + 1
+
+    @cached_property
+    def centre(self) -> tuple[float, float]:
+        return (self.x1 + self.x2 + 1) / 2, (self.y1 + self.y2 + 1) / 2
 
     def split(
         self, x: Optional[int] = None, y: Optional[int] = None

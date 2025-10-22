@@ -344,8 +344,8 @@ class DynamicSolver:
             return self.lookup[box, n_zones]
 
         if (
-            box.height() < self.config.minimum_height
-            or box.width() < self.config.minimum_width
+            box.height < self.config.minimum_height
+            or box.width < self.config.minimum_width
             or (
                 self.config.minimum_pixels
                 and self.field.field_box_sums[box] < self.config.minimum_pixels
@@ -442,8 +442,8 @@ class CVarDynamicSolver:
             return self.lookup[box, n_zones]
 
         if (
-            box.height() < self.config.minimum_height
-            or box.width() < self.config.minimum_width
+            box.height < self.config.minimum_height
+            or box.width < self.config.minimum_width
             or (
                 self.config.minimum_pixels
                 and self.field.field_box_sums[box] < self.config.minimum_pixels

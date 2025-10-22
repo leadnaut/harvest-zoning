@@ -69,8 +69,11 @@ def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
         (0, merged_shape[i] * merge_size - values.shape[i])
         for i in range(len(merged_shape))
     )
-    padded_values = np.pad(values, pad_tuple, mode="constant")
-    padded_bounds = np.pad(mask, pad_tuple, mode="constant")
+    padded_values = np.pad(
+        values * mask, pad_tuple, mode="constant", constant_values=0
+    )
+    padded_bounds = np.pad(mask, pad_tuple, mode="constant", constant_values=0)
+    assert padded_values.shape == padded_bounds.shape
     sums = sum(
         (
             padded_values[i::merge_size, j::merge_size]
@@ -210,10 +213,11 @@ def load_sfield(
     yield_error: float = YIELD_ERROR_TONNES_PER_HA,
     gpc_error: float = GPC_ERROR,
     num_scenarios: int,
-) -> SField:
+) -> SField | None:
     field = load_field(field_slug, merge_size, True)
-    if field.width + field.height >= 200:
+    if field.width + field.height >= 150:
         print(
             f"Field {field_slug} is large (dimensions: {field.width} x {field.height})"
         )
+        return None
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)
