@@ -409,6 +409,7 @@ class StochasticDynamicSolver:
         self.timeout = timeout
 
         self.lookup: dict[tuple[Box, int], tuple[float, list[Box]]] = {}
+        self.box_price_lookup: dict[tuple[Box, int], float] = {}
         self.solve_start = 0.0
         self.cache_hits = 0
         self.total_scenarios = self.field.num_scenarios
@@ -421,10 +422,17 @@ class StochasticDynamicSolver:
             / self.cvar_scenarios
         )
 
+    def price_box_in_scenario(self, box: Box, s: int) -> float:
+        if (box, s) not in self.box_price_lookup:
+            self.box_price_lookup[box, s] = self.config.pricing.price_box_in_sfield(box, self.field, s)
+        
+        return self.box_price_lookup[box, s]
+        
+
     def _score_box(self, box: Box) -> float:
         # apply objective at every step
         scores = [
-            self.config.pricing.price_box_in_sfield(box, self.field, s)
+            self.price_box_in_scenario(box, s)
             for s in range(self.total_scenarios)
         ]
         return self.objective(scores)
@@ -434,7 +442,7 @@ class StochasticDynamicSolver:
     ) -> tuple[float, list[Box]]:
         scores = [
             sum(
-                self.config.pricing.price_box_in_sfield(b, self.field, s)
+                self.price_box_in_scenario(b, s)
                 for b in s1[1] + s2[1]
             )
             for s in range(self.total_scenarios)
