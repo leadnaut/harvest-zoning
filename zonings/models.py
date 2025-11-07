@@ -4,10 +4,82 @@ from typing import Any, Generator, Generic, Optional, TypeVar
 
 import numpy as np
 
-from zonings.utils import Box, BoxDataLookup, calculate_box_sums
+from zonings.utils import subsequence_sums
 
 T = TypeVar("T")
 ListGrid = list[list[T]]
+
+
+@dataclass(frozen=True)
+class Box:
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+    @cached_property
+    def width(self) -> int:
+        return self.x2 - self.x1 + 1
+
+    @cached_property
+    def height(self) -> int:
+        return self.y2 - self.y1 + 1
+
+    @cached_property
+    def centre(self) -> tuple[float, float]:
+        return (self.x1 + self.x2 + 1) / 2, (self.y1 + self.y2 + 1) / 2
+
+    def split(
+        self, x: Optional[int] = None, y: Optional[int] = None
+    ) -> tuple["Box", "Box"]:
+        if x is None and y is None:
+            raise ValueError("have to split somewhere")
+        if x is not None and self.x1 <= x < self.x2:
+            return (
+                Box(self.x1, self.y1, x, self.y2),
+                Box(x + 1, self.y1, self.x2, self.y2),
+            )
+        if y is not None and self.y1 <= y < self.y2:
+            return (
+                Box(self.x1, self.y1, self.x2, y),
+                Box(self.x1, y + 1, self.x2, self.y2),
+            )
+        raise ValueError("Cut out of bounds")
+
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, Box):
+            raise NotImplementedError()
+        return (self.x1, self.y1, self.x2, self.y2) < (
+            other.x1,
+            other.y1,
+            other.x2,
+            other.y2,
+        )
+
+
+NumberT = TypeVar("NumberT", bound=float | int)
+
+
+@dataclass(frozen=True)
+class BoxDataLookup(Generic[NumberT]):
+    """data should contain a value per possible box such that the value for box
+    x1,y1,x2,y2 is at `data[y1 * max_y + y2][x1 * max_x + x2]`. data can contain
+    junk data for invalid boxes (i.e. if x2 < x1)."""
+
+    data: np.ndarray
+    max_x: int
+    max_y: int
+
+    def __getitem__(self, b: Box) -> NumberT:
+        return self.data[b.y1 * self.max_y + b.y2][b.x1 * self.max_x + b.x2]
+
+    @classmethod
+    def from_grid(cls, grid: list[list[NumberT]]) -> "BoxDataLookup[NumberT]":
+        row_sums = [subsequence_sums(row) for row in grid]
+
+        return BoxDataLookup(
+            subsequence_sums(row_sums), max_x=len(grid[0]), max_y=len(grid)
+        )
 
 
 @dataclass
@@ -30,9 +102,9 @@ class Field:
         if self.skip_init:
             return
         print(f"Intializing field {self.field_id}")
-        self.field_box_sums = calculate_box_sums(self.field_map)
-        self.yield_box_sums = calculate_box_sums(self.yield_map)
-        self.protein_box_sums = calculate_box_sums(
+        self.field_box_sums = BoxDataLookup.from_grid(self.field_map)
+        self.yield_box_sums = BoxDataLookup.from_grid(self.yield_map)
+        self.protein_box_sums = BoxDataLookup.from_grid(
             np.multiply(self.yield_map, self.gpc_map).tolist()
         )
         print(f"Finished intializing field {self.field_id}")
@@ -88,11 +160,13 @@ class SField:
             self.num_scenarios == len(self.yield_maps) == len(self.gpc_maps)
         ):
             raise ValueError("Number of maps does not match scenarios")
-        self.field_box_sums = calculate_box_sums(self.field_map)
+        self.field_box_sums = BoxDataLookup.from_grid(self.field_map)
         for s in range(self.num_scenarios):
-            self.yield_box_sums.append(calculate_box_sums(self.yield_maps[s]))
+            self.yield_box_sums.append(
+                BoxDataLookup.from_grid(self.yield_maps[s])
+            )
             self.protein_box_sums.append(
-                calculate_box_sums(
+                BoxDataLookup.from_grid(
                     np.multiply(self.yield_maps[s], self.gpc_maps[s]).tolist()
                 )
             )

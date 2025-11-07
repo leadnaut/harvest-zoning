@@ -22,9 +22,9 @@ from zonings.models import (
 )
 from zonings.solvers import (
     CGMipSolver,
-    StochasticDynamicSolver,
     DynamicSolver,
     StochasticCGMipSolver,
+    StochasticDynamicSolver,
 )
 from zonings.zoning import make_zones
 

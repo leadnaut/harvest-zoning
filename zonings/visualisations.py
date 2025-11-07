@@ -74,7 +74,7 @@ def view_sfield_solution(field: SField, solution: Solution[SZone]):
 
     anim = FuncAnimation(
         fig,
-        lambda s: view_sfield_scenario(field, solution, s),
+        lambda s: view_sfield_scenario(field, solution, s),  # type: ignore
         frames=field.num_scenarios,
     )
     plt.show()
@@ -109,7 +109,7 @@ def plot_zone_on_axes(
 
     txt = ax.text(
         *z.box.centre,
-        plotting_zone_info(z, field),
+        plotting_zone_info(z, field),  # type: ignore
         color="w",
         rotation=rot,
         fontsize="large" if type(z) is Zone else "medium",

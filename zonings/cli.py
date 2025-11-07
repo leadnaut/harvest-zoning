@@ -107,6 +107,7 @@ def solve_batch(
     field_list: io.TextIOWrapper,
     output_dir: Path,
     alpha: float,
+    cvar_weight: float,
     num_zones: int,
 ):
     """zones a list of fields"""

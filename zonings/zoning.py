@@ -1,7 +1,14 @@
 from typing import overload
 
-from zonings.models import Field, PriceInfo, SField, SZone, Zone, ZoningConfig
-from zonings.utils import Box
+from zonings.models import (
+    Box,
+    Field,
+    PriceInfo,
+    SField,
+    SZone,
+    Zone,
+    ZoningConfig,
+)
 
 
 class Blender:

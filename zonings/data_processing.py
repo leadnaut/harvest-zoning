@@ -14,11 +14,12 @@ from zonings.constants import (
     YIELD_FILE_PATH_FORMAT,
 )
 from zonings.models import Field, SField
-from zonings.types import NDArray
 from zonings.utils import no_numpy
 
 
-def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
+def pnormalise_arrays(
+    *arrays: np.ndarray, pad_value: float = 0
+) -> list[np.ndarray]:
     """
     pad a series of arrays so they are all the same shape. arrays must have the
     same dimension. the returned array's shape will be the dimension-wise
@@ -59,7 +60,7 @@ def pnormalise_arrays(*arrays: NDArray, pad_value: float = 0) -> list[NDArray]:
     return result
 
 
-def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
+def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
     """
     averages merge_size x merge_size squares in the values array. the mask array
     controls what pixels are counted in the averaging
@@ -110,7 +111,7 @@ def load_field(
                 ).km
                 / yield_data.width
             )
-            yield_array: NDArray = yield_data.read(1)
+            yield_array: np.ndarray = yield_data.read(1)
             yield_array *= y_pixel_length**2 * KM2_TO_HA
     except (FileNotFoundError, RasterioIOError):
         raise FileNotFoundError(
@@ -130,7 +131,7 @@ def load_field(
                 print(
                     f"Difference between yield and protein map pixel lengths is {abs(y_pixel_length - p_pixel_length)}"
                 )
-            protein_array: NDArray = protein_data.read(1)
+            protein_array: np.ndarray = protein_data.read(1)
     except (FileNotFoundError, RasterioIOError):
         raise FileNotFoundError(
             f"Couldn't find protein file (looked for {protein_file_path})"
@@ -216,7 +217,7 @@ def load_sfield(
     yield_error: float = YIELD_ERROR_TONNES_PER_HA,
     gpc_error: float = GPC_ERROR,
     num_scenarios: int,
-    path_prefix: str= "",
+    path_prefix: str = "",
 ) -> SField | None:
-    field = load_field(field_slug, merge_size, True,path_prefix=path_prefix)
+    field = load_field(field_slug, merge_size, True, path_prefix=path_prefix)
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)

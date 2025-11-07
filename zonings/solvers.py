@@ -6,6 +6,8 @@ from typing import Any, Callable, Generic, Optional, TypeVar
 import gurobipy as gp
 
 from zonings.models import (
+    Box,
+    BoxDataLookup,
     CGSolveInfo,
     DPSolveInfo,
     Field,
@@ -16,7 +18,6 @@ from zonings.models import (
     Zone,
     ZoningConfig,
 )
-from zonings.utils import Box, calculate_box_sums
 
 T = TypeVar("T")
 
@@ -82,7 +83,9 @@ class CGMipSolver:
             [self.overlap_constraints[x, y].Pi for x in range(self.field.width)]
             for y in range(self.field.height)
         ]
-        cover_dual_box_sums = calculate_box_sums(cover_constraint_dual_grid)
+        cover_dual_box_sums = BoxDataLookup.from_grid(
+            cover_constraint_dual_grid
+        )
 
         # calculate reduced costs of all the zones
         best_zones: list[CGQueueNode[Zone]] = []
@@ -294,7 +297,9 @@ class StochasticCGMipSolver:
             [self.overlap_constraints[x, y].Pi for x in range(self.field.width)]
             for y in range(self.field.height)
         ]
-        cover_dual_box_sums = calculate_box_sums(cover_constraint_dual_grid)
+        cover_dual_box_sums = BoxDataLookup.from_grid(
+            cover_constraint_dual_grid
+        )
         return_duals = [
             self.return_constraints[s].Pi for s in range(self.num_scenarios)
         ]
