@@ -74,12 +74,62 @@ class BoxDataLookup(Generic[NumberT]):
         return self.data[b.y1 * self.max_y + b.y2][b.x1 * self.max_x + b.x2]
 
     @classmethod
-    def from_grid(cls, grid: list[list[NumberT]]) -> "BoxDataLookup[NumberT]":
+    def from_grid(cls, grid: ListGrid[NumberT]) -> "BoxDataLookup[NumberT]":
         row_sums = [subsequence_sums(row) for row in grid]
 
         return BoxDataLookup(
             subsequence_sums(row_sums), max_x=len(grid[0]), max_y=len(grid)
         )
+
+
+@dataclass(frozen=True)
+class Zone:
+    box: Box
+    score: float
+
+    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
+        for x in range(self.box.x1, self.box.x2 + 1):
+            for y in range(self.box.y1, self.box.y2 + 1):
+                yield (x, y)
+
+    def __str__(self) -> str:
+        return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
+
+
+@dataclass(frozen=True)
+class SZone:
+    box: Box
+    scores: list[float]
+
+    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
+        for x in range(self.box.x1, self.box.x2 + 1):
+            for y in range(self.box.y1, self.box.y2 + 1):
+                yield (x, y)
+
+    def __hash__(self) -> int:
+        return hash(self.box)
+
+
+@dataclass(frozen=True)
+class PriceInfo:
+    protein_minimums: list[float]
+    price_per_tonnes: list[float]
+
+    @cached_property
+    def _reversed_lookup(self) -> list[tuple[float, float]]:
+        return list(
+            zip(
+                reversed(self.protein_minimums), reversed(self.price_per_tonnes)
+            )
+        )
+
+    def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
+        if gpc < 0:
+            raise ValueError("negative gpc")
+        for protein, price in self._reversed_lookup:
+            if gpc > protein:
+                return price * yield_tonnes
+        return 0
 
 
 @dataclass
@@ -132,6 +182,13 @@ class Field:
                 else {"lat": self.coordinates[0], "lon": self.coordinates[1]}
             )
         )
+
+    def get_box_price(self, box: Box, pricer: PriceInfo) -> float:
+        box_yield = self.yield_box_sums[box]
+        if box_yield < 0.001:
+            return 0
+        box_gpc = self.protein_box_sums[box] / box_yield
+        return pricer.calculate_price(box_gpc, box_yield)
 
 
 @dataclass
@@ -197,69 +254,29 @@ class SField:
     def __hash__(self) -> int:
         return hash(self.field_id)
 
+    def get_box_prices(self, box: Box, pricer: PriceInfo) -> list[float]:
+        prices = []
+        for s in range(self.num_scenarios):
+            box_yield = self.yield_box_sums[s][box]
+            if box_yield < 0.001:
+                prices.append(0.0)
+            else:
+                box_gpc = self.protein_box_sums[s][box] / box_yield
+                prices.append(pricer.calculate_price(box_gpc, box_yield))
 
-@dataclass(frozen=True)
-class Zone:
-    box: Box
-    score: float
-
-    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
-        for x in range(self.box.x1, self.box.x2 + 1):
-            for y in range(self.box.y1, self.box.y2 + 1):
-                yield (x, y)
-
-    def __str__(self) -> str:
-        return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
+        return prices
 
 
 @dataclass(frozen=True)
-class SZone:
-    box: Box
-    scores: list[float]
-
-    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
-        for x in range(self.box.x1, self.box.x2 + 1):
-            for y in range(self.box.y1, self.box.y2 + 1):
-                yield (x, y)
-
-    def __hash__(self) -> int:
-        return hash(self.box)
+class DeterministicSolution:
+    zones: list[Zone]
+    revenue: float
 
 
 @dataclass(frozen=True)
-class PriceInfo:
-    protein_minimums: list[float]
-    price_per_tonnes: list[float]
-
-    @cached_property
-    def reversed_lookup(self) -> list[tuple[float, float]]:
-        return list(
-            zip(
-                reversed(self.protein_minimums), reversed(self.price_per_tonnes)
-            )
-        )
-
-    def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
-        if gpc < 0:
-            raise ValueError("negative gpc")
-        for protein, price in self.reversed_lookup:
-            if gpc > protein:
-                return price * yield_tonnes
-        return 0
-
-    def price_box_in_sfield(self, box: Box, sfield: SField, s: int) -> float:
-        box_yield = sfield.yield_box_sums[s][box]
-        if box_yield < 0.001:
-            return 0.0
-        box_gpc = sfield.protein_box_sums[s][box] / box_yield
-        return self.calculate_price(box_gpc, box_yield)
-
-    def price_box_in_field(self, box: Box, field: Field) -> float:
-        box_yield = field.yield_box_sums[box]
-        if box_yield < 0.0001:
-            return 0.0
-        box_gpc = field.protein_box_sums[box] / box_yield
-        return self.calculate_price(box_gpc, box_yield)
+class StochasticSolution:
+    zones: list[SZone]
+    revenue: list[float]
 
 
 @dataclass(frozen=True)
@@ -289,12 +306,3 @@ class DPSolveInfo:
     total_solve_seconds: float
     lookup_size: int
     lookup_hits: int
-
-
-Z = TypeVar("Z", Zone, SZone)
-
-
-@dataclass(frozen=True)
-class Solution(Generic[Z]):
-    zones: list[Z]
-    revenue: float | list[float]

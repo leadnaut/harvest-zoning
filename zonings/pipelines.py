@@ -10,12 +10,13 @@ from zonings.constants import DEFAULT_PRICING
 from zonings.data_processing import load_field, load_sfield
 from zonings.models import (
     CGSolveInfo,
+    DeterministicSolution,
     DPSolveInfo,
     Field,
     MipConfig,
     PriceInfo,
     SField,
-    Solution,
+    StochasticSolution,
     SZone,
     Zone,
     ZoningConfig,
@@ -38,7 +39,7 @@ def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
 
 def output_results(
     field: Field | SField,
-    solution: Solution[Zone] | Solution[SZone],
+    solution: DeterministicSolution | StochasticSolution,
     pricing: PriceInfo,
     output_dir: Path,
     field_slug: str,
@@ -47,23 +48,23 @@ def output_results(
     kpis = field.to_dict()
 
     # base revenue/s
-    if isinstance(solution.revenue, list) and isinstance(field, SField):
+    if isinstance(solution, StochasticSolution) and isinstance(field, SField):
         kpis |= {
             f"solution_{s}": solution.revenue[s]
             for s in range(field.num_scenarios)
         }
         kpis |= {
-            f"base_{s}": pricing.price_box_in_sfield(
-                field.bounding_box(), field, s
+            f"base_{s}": score
+            for s, score in enumerate(
+                field.get_box_prices(field.bounding_box(), pricing)
             )
-            for s in range(field.num_scenarios)
         }
 
-    elif isinstance(solution.revenue, float) and isinstance(field, Field):
+    elif isinstance(solution, DeterministicSolution) and isinstance(
+        field, Field
+    ):
         kpis |= {"solution": solution.revenue}
-        kpis |= {
-            "base": pricing.price_box_in_field(field.bounding_box(), field)
-        }
+        kpis |= {"base": field.get_box_price(field.bounding_box(), pricing)}
     else:
         raise TypeError()
 

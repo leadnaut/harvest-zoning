@@ -7,7 +7,14 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
 
-from zonings.models import Field, SField, Solution, SZone, Zone
+from zonings.models import (
+    DeterministicSolution,
+    Field,
+    SField,
+    StochasticSolution,
+    SZone,
+    Zone,
+)
 
 
 @overload
@@ -36,7 +43,7 @@ def plotting_zone_info(zone: Zone | SZone, field: Field | SField) -> str:
     return "test"
 
 
-def view_field_solution(field: Field, solution: Solution[Zone]):
+def view_field_solution(field: Field, solution: DeterministicSolution):
     ax = sns.heatmap(
         field.gpc_map,
         vmin=0.1,
@@ -50,7 +57,7 @@ def view_field_solution(field: Field, solution: Solution[Zone]):
 
 
 def view_sfield_scenario(
-    field: SField, solution: Solution[SZone], s: int
+    field: SField, solution: StochasticSolution, s: int
 ) -> Axes:
     maximum_gpc = max(map(max, map(max, field.gpc_maps)))
     plt.clf()
@@ -67,7 +74,7 @@ def view_sfield_scenario(
     return ax
 
 
-def view_sfield_solution(field: SField, solution: Solution[SZone]):
+def view_sfield_solution(field: SField, solution: StochasticSolution):
     fig = plt.figure()
 
     view_sfield_scenario(field, solution, 0)

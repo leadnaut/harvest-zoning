@@ -9,11 +9,12 @@ from zonings.models import (
     Box,
     BoxDataLookup,
     CGSolveInfo,
+    DeterministicSolution,
     DPSolveInfo,
     Field,
     MipConfig,
     SField,
-    Solution,
+    StochasticSolution,
     SZone,
     Zone,
     ZoningConfig,
@@ -110,7 +111,7 @@ class CGMipSolver:
             return None
         return [i.variable for i in best_zones], positive_rc_zones
 
-    def solve(self) -> tuple[Solution[Zone], CGSolveInfo]:
+    def solve(self) -> tuple[DeterministicSolution, CGSolveInfo]:
         print("Beginning column generation")
         solve_start_t = time()
         cg_iterations = 0
@@ -137,7 +138,7 @@ class CGMipSolver:
         self.model.optimize()
         solve_end_t = time()
 
-        return Solution(
+        return DeterministicSolution(
             [z for z in self.X if self.X[z].X > 0.01],
             self.model.ObjVal,
         ), CGSolveInfo(
@@ -206,11 +207,11 @@ class StochasticMipSolver:
             * gp.quicksum(self.BetaM[s] for s in range(self.num_scenarios))
         )
 
-    def solve(self) -> Solution[SZone]:
+    def solve(self) -> StochasticSolution:
         self.model.optimize()
         print("Objective Value", self.model.ObjVal)
         zones = [z for z in self.X if self.X[z].X > 0.01]
-        return Solution(
+        return StochasticSolution(
             zones,
             [
                 sum(z.scores[s] for z in zones)
@@ -331,7 +332,7 @@ class StochasticCGMipSolver:
             return None
         return [i.variable for i in best_zones], positive_rc_zones
 
-    def solve(self) -> tuple[Solution[SZone], CGSolveInfo]:
+    def solve(self) -> tuple[StochasticSolution, CGSolveInfo]:
         print("Beginning column generation")
         solve_start_t = time()
         cg_iterations = 0
@@ -364,7 +365,7 @@ class StochasticCGMipSolver:
         zones = [z for z in self.X if self.X[z].X > 0.01]
 
         return (
-            Solution(
+            StochasticSolution(
                 zones,
                 [
                     sum(z.scores[s] for z in zones)
@@ -397,11 +398,7 @@ class DynamicSolver:
         self.timeout = timeout
 
     def _score_box(self, box: Box) -> float:
-        box_yield = self.field.yield_box_sums[box]
-        if box_yield < 0.00001:
-            return 0
-        box_gpc = self.field.protein_box_sums[box] / box_yield
-        return self.config.pricing.calculate_price(box_gpc, box_yield)
+        return self.field.get_box_price(box, self.config.pricing)
 
     def _combine_solution(
         self, s1: tuple[float, list[Box]], s2: tuple[float, list[Box]]
@@ -451,7 +448,7 @@ class DynamicSolver:
         self.lookup[box, n_zones] = result
         return result
 
-    def solve(self) -> tuple[Solution[Zone], DPSolveInfo]:
+    def solve(self) -> tuple[DeterministicSolution, DPSolveInfo]:
         print(f"Starting dynamic programming solve for {self.field.field_id}")
         tic = time()
         if self.timeout is not None:
@@ -463,7 +460,7 @@ class DynamicSolver:
         print(
             f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits"
         )
-        return Solution(
+        return DeterministicSolution(
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
         ), DPSolveInfo(toc - tic, len(self.lookup), self.cache_hits)
@@ -506,10 +503,7 @@ class StochasticDynamicSolver:
 
     def _base_case(self, box: Box) -> SDPPartialSol:
         # apply objective at every step
-        scores = [
-            self.config.pricing.price_box_in_sfield(box, self.field, s)
-            for s in range(self.total_scenarios)
-        ]
+        scores = self.field.get_box_prices(box, self.config.pricing)
         return SDPPartialSol(self.objective(scores), [box], scores)
 
     def _combine_and_score_sub_solutions(
@@ -572,7 +566,7 @@ class StochasticDynamicSolver:
         self.lookup[box, n_zones] = result
         return result
 
-    def solve(self) -> tuple[Solution[SZone], DPSolveInfo]:
+    def solve(self) -> tuple[StochasticSolution, DPSolveInfo]:
         print(
             f"Starting stochastic dynamic programming solve for {self.field.field_id}"
         )
@@ -590,10 +584,7 @@ class StochasticDynamicSolver:
         zones = [
             SZone(
                 b,
-                [
-                    self.config.pricing.price_box_in_sfield(b, self.field, s)
-                    for s in range(self.total_scenarios)
-                ],
+                self.field.get_box_prices(b, self.config.pricing),
             )
             for b in sol.boxes
         ]
@@ -602,7 +593,7 @@ class StochasticDynamicSolver:
         ]
         if (calculated := self.objective(scores)) != sol.objective:
             print(f"Calculated: {calculated}\nReturned: {sol.objective}")
-        return Solution(
+        return StochasticSolution(
             zones,
             scores,
         ), DPSolveInfo(toc - tic, len(self.lookup), self.cache_hits)

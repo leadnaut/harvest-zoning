@@ -17,16 +17,7 @@ class Blender:
         self.price_info = price_info
 
     def __call__(self, box: Box) -> Zone:
-        total_yield = self.field.yield_box_sums[box]
-        total_protein = self.field.protein_box_sums[box]
-        return Zone(
-            box,
-            self.price_info.calculate_price(
-                total_protein / total_yield, total_yield
-            )
-            if total_yield > 0.0001
-            else 0,
-        )
+        return Zone(box, self.field.get_box_price(box, self.price_info))
 
 
 class SBlender:
@@ -37,10 +28,7 @@ class SBlender:
     def __call__(self, box: Box) -> SZone:
         return SZone(
             box,
-            [
-                self.price_info.price_box_in_sfield(box, self.field, s)
-                for s in range(self.field.num_scenarios)
-            ],
+            self.field.get_box_prices(box, self.price_info),
         )
 
 
