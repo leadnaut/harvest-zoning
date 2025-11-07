@@ -94,9 +94,12 @@ def _average_pixels(values: NDArray, mask: NDArray, merge_size: int):
     return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
 
 
-def load_field(slug: str, merge_size: int, skip_init: bool = False) -> Field:
-    yield_file_path = YIELD_FILE_PATH_FORMAT.format(slug=slug)
-    protein_file_path = PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
+def load_field(
+    slug: str, merge_size: int, skip_init: bool = False, path_prefix: str = ""
+) -> Field:
+    print(f"Loading field {slug}")
+    yield_file_path = path_prefix + YIELD_FILE_PATH_FORMAT.format(slug=slug)
+    protein_file_path = path_prefix + PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
 
     try:
         with rasterio.open(yield_file_path) as yield_data:
@@ -213,11 +216,7 @@ def load_sfield(
     yield_error: float = YIELD_ERROR_TONNES_PER_HA,
     gpc_error: float = GPC_ERROR,
     num_scenarios: int,
+    path_prefix: str= "",
 ) -> SField | None:
-    field = load_field(field_slug, merge_size, True)
-    if field.width + field.height >= 150:
-        print(
-            f"Field {field_slug} is large (dimensions: {field.width} x {field.height})"
-        )
-        return None
+    field = load_field(field_slug, merge_size, True,path_prefix=path_prefix)
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)

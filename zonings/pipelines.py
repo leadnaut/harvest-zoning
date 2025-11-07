@@ -22,11 +22,11 @@ from zonings.models import (
 )
 from zonings.solvers import (
     CGMipSolver,
-    CVarDynamicSolver,
+    StochasticDynamicSolver,
     DynamicSolver,
     StochasticCGMipSolver,
 )
-from zonings.zoning import make_szones, make_zones
+from zonings.zoning import make_zones
 
 
 def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
@@ -122,7 +122,11 @@ def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
 
 
 def stochastic_mip_pipeline(
-    field_slug, output_dir: Path, nzones: int = 4, alpha: float = 0.2
+    field_slug,
+    output_dir: Path,
+    nzones: int = 4,
+    alpha: float = 0.2,
+    cvar_weight: float = 0.5,
 ) -> None:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -140,10 +144,15 @@ def stochastic_mip_pipeline(
     except FileNotFoundError as e:
         print(e.args)
         return None
-    zones = make_szones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
+    zones = make_zones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
 
     solver = StochasticCGMipSolver(
-        zones, nzones, alpha, 0, field, _guess_good_solve_parameters(len(zones))
+        zones,
+        nzones,
+        alpha,
+        1 - cvar_weight,
+        field,
+        _guess_good_solve_parameters(len(zones)),
     )
 
     sol, info = solver.solve()
@@ -178,7 +187,11 @@ def dynamic_pipeline(
 
 
 def stochastic_dynamic_pipeline(
-    field_slug: str, output_dir: Path, nzones: int = 4, alpha: float = 0.2
+    field_slug: str,
+    output_dir: Path,
+    nzones: int = 4,
+    alpha: float = 0.2,
+    cvar_weight: float = 0.5,
 ) -> None:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -189,7 +202,7 @@ def stochastic_dynamic_pipeline(
     try:
         np.random.seed(2025)
         field = load_sfield(
-            field_slug=field_slug, merge_size=2, num_scenarios=50
+            field_slug=field_slug, merge_size=2, num_scenarios=100
         )
         if field is None:
             return
@@ -197,8 +210,13 @@ def stochastic_dynamic_pipeline(
         print(e.args)
         return
 
-    solver = CVarDynamicSolver(
-        field, nzones, alpha, ZoningConfig(3, 3, DEFAULT_PRICING), 1200
+    solver = StochasticDynamicSolver(
+        field=field,
+        max_zones=nzones,
+        cvar_alpha=alpha,
+        expectation_weight=1 - cvar_weight,
+        config=ZoningConfig(3, 3, DEFAULT_PRICING),
+        timeout=1200,
     )
     sol, info = solver.solve()
 

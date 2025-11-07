@@ -1,3 +1,5 @@
+from typing import overload
+
 from zonings.models import Field, PriceInfo, SField, SZone, Zone, ZoningConfig
 from zonings.utils import Box
 
@@ -35,7 +37,15 @@ class SBlender:
         )
 
 
-def _zone_gen(
+@overload
+def make_zones(field: Field, config: ZoningConfig) -> list[Zone]: ...
+
+
+@overload
+def make_zones(field: SField, config: ZoningConfig) -> list[SZone]: ...
+
+
+def make_zones(
     field: Field | SField, config: ZoningConfig
 ) -> list[Zone] | list[SZone]:
     print("Creating Boxes")
@@ -43,11 +53,11 @@ def _zone_gen(
         Box(x1, y1, x2, y2)
         for x1 in range(field.width)
         for y1 in range(field.height)
-        for x2 in range(x1 + config.minimum_width - 1, field.width)
-        for y2 in range(y1 + config.minimum_height - 1, field.height)
+        for x2 in range(x1, field.width)
+        for y2 in range(y1, field.height)
         if (
-            x2 - x1 >= config.minimum_width
-            and y2 - y1 >= config.minimum_height
+            x2 - x1 + 1 >= config.minimum_width
+            and y2 - y1 + 1 >= config.minimum_height
             and (
                 config.minimum_pixels is None
                 or field.field_box_sums[Box(x1, y1, x2, y2)]
@@ -69,11 +79,3 @@ def _zone_gen(
             print(f"{i / nboxes * 100:.2f}%", end="\r")
 
     return zones
-
-
-def make_zones(field: Field, config: ZoningConfig) -> list[Zone]:
-    return _zone_gen(field, config)  # type: ignore
-
-
-def make_szones(field: SField, config: ZoningConfig) -> list[SZone]:
-    return _zone_gen(field, config)  # type: ignore

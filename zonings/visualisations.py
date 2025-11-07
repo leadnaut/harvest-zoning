@@ -13,15 +13,13 @@ from zonings.models import Field, SField, Solution, SZone, Zone
 @overload
 def plotting_zone_info(zone: Zone, field: Field) -> str: ...
 @overload
-def plotting_zone_info(zone: SZone, field: SField, alpha: float) -> str: ...
-def plotting_zone_info(
-    zone: Zone | SZone, field: Field | SField, alpha: float | None = None
-) -> str:
+def plotting_zone_info(zone: SZone, field: SField) -> str: ...
+def plotting_zone_info(zone: Zone | SZone, field: Field | SField) -> str:
     if type(zone) is Zone and type(field) is Field:
         gpc = field.protein_box_sums[zone.box] / field.yield_box_sums[zone.box]
         return f"GPC = {gpc * 100:.2f}%"
 
-    if type(zone) is SZone and type(field) is SField and alpha is not None:
+    if type(zone) is SZone and type(field) is SField:
         gpcs = sorted(
             field.protein_box_sums[s][zone.box]
             / field.yield_box_sums[s][zone.box]
@@ -39,33 +37,44 @@ def plotting_zone_info(
 
 
 def view_field_solution(field: Field, solution: Solution[Zone]):
-    ax = sns.heatmap(field.gpc_map, vmin=0.1)
+    ax = sns.heatmap(
+        field.gpc_map,
+        vmin=0.1,
+        xticklabels=False,
+        yticklabels=False,
+        square=True,
+    )
     for z in solution.zones:
         plot_zone_on_axes(ax, z, field)
-
-    plt.show()
     return ax
 
 
-def view_sfield_solution(
-    field: SField, solution: Solution[SZone], alpha: float
-):
+def view_sfield_scenario(
+    field: SField, solution: Solution[SZone], s: int
+) -> Axes:
     maximum_gpc = max(map(max, map(max, field.gpc_maps)))
+    plt.clf()
+    ax = sns.heatmap(
+        field.gpc_maps[s],
+        vmin=0.1,
+        vmax=maximum_gpc,
+        xticklabels=False,
+        yticklabels=False,
+        square=True,
+    )
+    for z in solution.zones:
+        plot_zone_on_axes(ax, z, field)
+    return ax
 
+
+def view_sfield_solution(field: SField, solution: Solution[SZone]):
     fig = plt.figure()
 
-    def view_scenario(s: int):
-        plt.clf()
-        ax = sns.heatmap(field.gpc_maps[s], vmin=0.1, vmax=maximum_gpc)
-        for z in solution.zones:
-            plot_zone_on_axes(ax, z, field, alpha)
-
-    view_scenario(0)
+    view_sfield_scenario(field, solution, 0)
 
     anim = FuncAnimation(
         fig,
-        view_scenario,  # type: ignore
-        init_func=lambda: view_scenario(0),  # type: ignore
+        lambda s: view_sfield_scenario(field, solution, s),
         frames=field.num_scenarios,
     )
     plt.show()
@@ -75,10 +84,14 @@ def view_sfield_solution(
 def plot_zone_on_axes(ax: Axes, z: Zone, field: Field) -> Axes: ...
 @overload
 def plot_zone_on_axes(
-    ax: Axes, z: SZone, field: SField, alpha: float
+    ax: Axes,
+    z: SZone,
+    field: SField,
 ) -> Axes: ...
 def plot_zone_on_axes(
-    ax: Axes, z: Zone | SZone, field: Field | SField, alpha: float | None = None
+    ax: Axes,
+    z: Zone | SZone,
+    field: Field | SField,
 ) -> Axes:
     ax.add_patch(
         Rectangle(
@@ -90,11 +103,16 @@ def plot_zone_on_axes(
             facecolor="none",
         )
     )
+    rot = 0
+    if z.box.width <= 6:
+        rot = 90
+
     txt = ax.text(
         *z.box.centre,
-        plotting_zone_info(z, field, alpha),  # type: ignore
+        plotting_zone_info(z, field),
         color="w",
-        fontsize="large",
+        rotation=rot,
+        fontsize="large" if type(z) is Zone else "medium",
         fontweight="bold",
         horizontalalignment="center",
         verticalalignment="center",

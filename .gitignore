@@ -5,3 +5,4 @@ data
 *.egg-info/
 scripts/
 outputs
+plots
