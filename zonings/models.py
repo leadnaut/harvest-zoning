@@ -83,31 +83,61 @@ class BoxDataLookup(Generic[NumberT]):
 
 
 @dataclass(frozen=True)
-class Zone:
-    box: Box
-    score: float
+class Point:
+    x: float
+    y: float
 
-    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
-        for x in range(self.box.x1, self.box.x2 + 1):
-            for y in range(self.box.y1, self.box.y2 + 1):
-                yield (x, y)
+    def __neg__(self) -> "Point":
+        return Point(-self.x, -self.y)
 
-    def __str__(self) -> str:
-        return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
+    def __add__(self, other: Any) -> "Point":
+        if isinstance(other, Point):
+            return Point(self.x + other.x, self.y + other.y)
+        elif isinstance(other, int | float):
+            return Point(self.x + other, self.y + other)
+        raise NotImplementedError
+
+    __radd__ = __add__
+
+    def __mul__(self, other: Any) -> "Point":
+        if isinstance(other, int | float):
+            return Point(self.x * other, self.y * other)
+        raise NotImplementedError
+
+    __rmul__ = __mul__
+
+    def __sub__(self, other: Any) -> "Point":
+        return self + (-other)
+
+    __rsub__ = __sub__
 
 
 @dataclass(frozen=True)
-class SZone:
-    box: Box
-    scores: list[float]
+class Quadrilateral:
+    top_left: Point
+    top_right: Point
+    bottom_left: Point
+    bottom_right: Point
 
-    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
-        for x in range(self.box.x1, self.box.x2 + 1):
-            for y in range(self.box.y1, self.box.y2 + 1):
-                yield (x, y)
+    def point_on_top_border(self, t: float) -> Point:
+        return self.top_left + t * (self.top_right - self.top_left)
 
-    def __hash__(self) -> int:
-        return hash(self.box)
+    def point_on_left_border(self, t: float) -> Point:
+        return self.top_left + t * (self.bottom_left - self.top_left)
+
+    def point_on_bottom_border(self, t: float) -> Point:
+        return self.bottom_left + t * (self.bottom_right - self.bottom_left)
+
+    def point_on_right_border(self, t: float) -> Point:
+        return self.top_right + t * (self.bottom_right - self.top_right)
+
+    def inscribed_box(self) -> Box:
+        return Box(
+            x1=round(max(self.top_left.x, self.bottom_left.x)),
+            y1=round(max(self.top_left.y, self.top_right.y)),
+            x2=round(min(self.top_right.x, self.bottom_right.x)),
+            y2=round(min(self.bottom_left.y, self.bottom_right.y)),
+        )
 
 
 @dataclass(frozen=True)
@@ -268,9 +298,37 @@ class SField:
 
 
 @dataclass(frozen=True)
+class Zone:
+    box: Box
+    score: float
+
+    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
+        for x in range(self.box.x1, self.box.x2 + 1):
+            for y in range(self.box.y1, self.box.y2 + 1):
+                yield (x, y)
+
+    def __str__(self) -> str:
+        return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
+
+
+@dataclass(frozen=True)
 class DeterministicSolution:
     zones: list[Zone]
     revenue: float
+
+
+@dataclass(frozen=True)
+class SZone:
+    box: Box
+    scores: list[float]
+
+    def iter_contents(self) -> Generator[tuple[int, int], None, None]:
+        for x in range(self.box.x1, self.box.x2 + 1):
+            for y in range(self.box.y1, self.box.y2 + 1):
+                yield (x, y)
+
+    def __hash__(self) -> int:
+        return hash(self.box)
 
 
 @dataclass(frozen=True)
@@ -288,7 +346,7 @@ class ZoningConfig:
 
 
 @dataclass(frozen=True)
-class MipConfig:
+class CGSolverConfig:
     max_cg_iterations: Optional[int] = None
     max_variables_added_per_cg_iteration: int = 500
 

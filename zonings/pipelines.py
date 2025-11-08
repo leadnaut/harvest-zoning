@@ -13,7 +13,7 @@ from zonings.models import (
     DeterministicSolution,
     DPSolveInfo,
     Field,
-    MipConfig,
+    CGSolverConfig,
     PriceInfo,
     SField,
     StochasticSolution,
@@ -22,16 +22,16 @@ from zonings.models import (
     ZoningConfig,
 )
 from zonings.solvers import (
-    CGMipSolver,
+    DeterministicMIPSolver,
     DynamicSolver,
-    StochasticCGMipSolver,
+    StochasticCGMIPSolver,
     StochasticDynamicSolver,
 )
 from zonings.zoning import make_zones
 
 
-def _guess_good_solve_parameters(n_zones: int) -> MipConfig:
-    return MipConfig(
+def _guess_good_solve_parameters(n_zones: int) -> CGSolverConfig:
+    return CGSolverConfig(
         max_variables_added_per_cg_iteration=10 ** (floor(log10(n_zones)) - 3)
         * 5
     )
@@ -113,7 +113,7 @@ def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
         ),
     )
 
-    mip = CGMipSolver(
+    mip = DeterministicMIPSolver(
         zones, nzones, field, _guess_good_solve_parameters(len(zones))
     )
     sol, info = mip.solve()
@@ -147,7 +147,7 @@ def stochastic_mip_pipeline(
         return None
     zones = make_zones(field, ZoningConfig(3, 3, DEFAULT_PRICING))
 
-    solver = StochasticCGMipSolver(
+    solver = StochasticCGMIPSolver(
         zones,
         nzones,
         alpha,

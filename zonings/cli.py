@@ -10,7 +10,7 @@ import numpy as np
 
 from zonings.constants import DEFAULT_PRICING
 from zonings.data_processing import load_field, load_sfield
-from zonings.models import Field, MipConfig, PriceInfo, ZoningConfig
+from zonings.models import Field, CGSolverConfig, PriceInfo, ZoningConfig
 from zonings.pipelines import (
     dynamic_pipeline,
     mip_pipeline,
@@ -18,9 +18,9 @@ from zonings.pipelines import (
     stochastic_mip_pipeline,
 )
 from zonings.solvers import (
-    CGMipSolver,
+    DeterministicMIPSolver,
     DynamicSolver,
-    StochasticCGMipSolver,
+    StochasticCGMIPSolver,
     StochasticDynamicSolver,
     StochasticMipSolver,
 )
@@ -267,7 +267,7 @@ def speed_test():
         for f in fields:
             tic = time()
             zones = make_zones(f, ZoningConfig(3, 3, DEFAULT_PRICING))
-            mip_sol, mip_info = CGMipSolver(zones, n, f, MipConfig()).solve()
+            mip_sol, mip_info = DeterministicMIPSolver(zones, n, f, CGSolverConfig()).solve()
             toc = time()
             mip_times[n].append(toc - tic)
 
@@ -315,13 +315,13 @@ def quality_test():
         mip_results.append(float(sum(sorted(mip_sol.revenue)[:20]) / 20))
 
         tic = time()
-        cg_mip_sol, mip_info = StochasticCGMipSolver(
+        cg_mip_sol, mip_info = StochasticCGMIPSolver(
             make_zones(f, ZoningConfig(3, 3, DEFAULT_PRICING)),
             4,
             0.2,
             0,
             f,
-            MipConfig(),
+            CGSolverConfig(),
         ).solve()
         toc = time()
         cg_mip_times.append(toc - tic)
