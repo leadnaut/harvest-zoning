@@ -10,7 +10,7 @@ import numpy as np
 
 from zonings.constants import DEFAULT_PRICING
 from zonings.data_processing import load_field, load_sfield
-from zonings.models import Field, CGSolverConfig, PriceInfo, ZoningConfig
+from zonings.models import CGSolverConfig, Field, PriceInfo, ZoningConfig
 from zonings.pipelines import (
     dynamic_pipeline,
     mip_pipeline,
@@ -267,7 +267,9 @@ def speed_test():
         for f in fields:
             tic = time()
             zones = make_zones(f, ZoningConfig(3, 3, DEFAULT_PRICING))
-            mip_sol, mip_info = DeterministicMIPSolver(zones, n, f, CGSolverConfig()).solve()
+            mip_sol, mip_info = DeterministicMIPSolver(
+                zones, n, f, CGSolverConfig()
+            ).solve()
             toc = time()
             mip_times[n].append(toc - tic)
 

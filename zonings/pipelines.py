@@ -10,10 +10,10 @@ from zonings.constants import DEFAULT_PRICING
 from zonings.data_processing import load_field, load_sfield
 from zonings.models import (
     CGSolveInfo,
+    CGSolverConfig,
     DeterministicSolution,
     DPSolveInfo,
     Field,
-    CGSolverConfig,
     PriceInfo,
     SField,
     StochasticSolution,

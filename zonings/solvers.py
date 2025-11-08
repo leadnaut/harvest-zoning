@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum, IntEnum
+from enum import IntEnum
 from heapq import heappush, heapreplace
 from time import time
-from typing import Any, Callable, Generic, Hashable, Optional, TypeVar
+from typing import Any, Callable, Hashable, Optional
 
 import gurobipy as gp
 
@@ -11,17 +11,16 @@ from zonings.models import (
     Box,
     BoxDataLookup,
     CGSolveInfo,
+    CGSolverConfig,
     DeterministicSolution,
     DPSolveInfo,
     Field,
-    CGSolverConfig,
     SField,
     StochasticSolution,
     SZone,
     Zone,
     ZoningConfig,
 )
-
 
 
 @dataclass(frozen=True)
@@ -34,43 +33,48 @@ class CGQueueNode[T]:
             raise NotImplementedError
         return self.reduced_cost < other.reduced_cost
 
+
 class Sense(IntEnum):
     MAXIMISE = 1
     MINIMISE = -1
 
-class CGSolver[VariableType: Hashable, SolutionType](ABC):
 
-    def __init__(self, variables: list[VariableType], config: CGSolverConfig, sense: Sense) -> None:
-        self.all_variables = set(variables)
+class CGSolver[VariableType: Hashable, SolutionType](ABC):
+    def __init__(
+        self,
+        cg_variables: list[VariableType],
+        config: CGSolverConfig,
+        sense: Sense,
+    ) -> None:
+        self.all_cg_variables = set(cg_variables)
         self.sense = sense
         self.model = gp.Model()
         self.cg_X: dict[VariableType, gp.Var] = {}
         self.config = config
-    
+
     @abstractmethod
-    def _get_starting_variables(self) -> list[VariableType]:
-        ...
+    def _get_starting_variables(self) -> list[VariableType]: ...
 
     def _add_variables_to_model(self, variables: list[VariableType]) -> None:
         self.cg_X.update((v, self.model.addVar()) for v in variables)
 
         for v in variables:
             self._add_variable_to_objective_and_constraints(v)
-    
+
     @abstractmethod
-    def _add_variable_to_objective_and_constraints(self, v: VariableType) -> None:
-        ...
-    
+    def _add_variable_to_objective_and_constraints(
+        self, v: VariableType
+    ) -> None: ...
+
     @abstractmethod
     def _update_lp_sol_based_attributes(self) -> None:
-        """ this runs before reduced costs for the current iteration are calculated
+        """this runs before reduced costs for the current iteration are calculated
         providing a chance for attrs needed during rc calculation to be updated
         """
         ...
-    
+
     @abstractmethod
-    def _calculate_reduced_cost(self, variable: VariableType) -> float:
-        ...
+    def _calculate_reduced_cost(self, variable: VariableType) -> float: ...
 
     def _find_entering_variables(self) -> tuple[list[VariableType], int] | None:
         best_variables: list[CGQueueNode[VariableType]] = []
@@ -78,55 +82,59 @@ class CGSolver[VariableType: Hashable, SolutionType](ABC):
 
         self._update_lp_sol_based_attributes()
 
-        for v in self.all_variables:
+        for v in self.all_cg_variables:
             if v in self.cg_X:
                 continue
             rc = self._calculate_reduced_cost(v)
             if rc * self.sense > 0.001:
                 good_rc_variables += 1
-                if len(best_variables) < self.config.max_variables_added_per_cg_iteration:
+                if (
+                    len(best_variables)
+                    < self.config.max_variables_added_per_cg_iteration
+                ):
                     heappush(best_variables, CGQueueNode(rc, v))
                 elif abs(rc) > abs(best_variables[0].reduced_cost):
                     heapreplace(best_variables, CGQueueNode(rc, v))
-            
+
         if len(best_variables) == 0:
             return None
         return [i.variable for i in best_variables], good_rc_variables
-    
+
     @abstractmethod
-    def _extract_solution(self) -> SolutionType:
-        ...
+    def _extract_solution(self) -> SolutionType: ...
 
     def solve(self) -> tuple[SolutionType, CGSolveInfo]:
         print("Beginning Column Generation")
         solve_start_t = time()
         cg_iterations = 0
-        self.model.setParam('OutputFlag', 0)
+        self.model.setParam("OutputFlag", 0)
 
         # add initial variables
         initial_variables = self._get_starting_variables()
         self._add_variables_to_model(initial_variables)
         total_variables = len(initial_variables)
-        while(
-            not self.config.max_cg_iterations or cg_iterations < self.config.max_cg_iterations
+        while (
+            not self.config.max_cg_iterations
+            or cg_iterations < self.config.max_cg_iterations
         ):
             self.model.optimize()
             cg_iterations += 1
-            
+
             if entering_vars := self._find_entering_variables():
                 print(
-                    f"{cg_iterations}: Added {len(entering_vars[0])}/{entering_vars[1]}"
+                    f"{cg_iterations}: Added {len(entering_vars[0])} ({entering_vars[1]} variables with good RCs)"
                 )
                 self._add_variables_to_model(entering_vars[0])
                 total_variables += len(entering_vars[0])
                 continue
             break
         cg_end_t = time()
-        print(f"Column generation done. {total_variables} total variables.")
+        print(f"Column generation done! {total_variables} total variables.")
 
         for v in self.cg_X:
-            self.cg_X[v].setAttr('vtype', gp.GRB.BINARY)
+            self.cg_X[v].setAttr("vtype", gp.GRB.BINARY)
         self.model.setParam("OutputFlag", 1)
+        print("Starting MIP Solve")
         self.model.optimize()
         solve_end_t = time()
 
@@ -137,12 +145,18 @@ class CGSolver[VariableType: Hashable, SolutionType](ABC):
                 cg_end_t - solve_start_t,
                 cg_iterations,
                 total_variables,
-            )
+            ),
         )
 
 
 class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
-    def __init__(self, zones: list[Zone], max_zones: int, field: Field, config: CGSolverConfig) -> None:
+    def __init__(
+        self,
+        zones: list[Zone],
+        max_zones: int,
+        field: Field,
+        config: CGSolverConfig,
+    ) -> None:
         super().__init__(zones, config, Sense.MAXIMISE)
 
         self.field = field
@@ -151,14 +165,14 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
 
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
         self.overlap_constraints = {
-            (x,y): self.model.addConstr(gp.LinExpr(0) <= 1)
+            (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
             for x in range(field.width)
             for y in range(field.height)
         }
 
         # RC Calculation Helpers
         self.cover_dual_box_sums: BoxDataLookup[float]
-    
+
     def _get_starting_variables(self) -> list[Zone]:
         return []
 
@@ -166,23 +180,32 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
         self.cg_X[v].Obj = v.score
         self.model.chgCoeff(self.limit_constraint, self.cg_X[v], 1)
         for x, y in v.iter_contents():
-            self.model.chgCoeff(
-                self.overlap_constraints[x,y], self.cg_X[v], 1
-            )
+            self.model.chgCoeff(self.overlap_constraints[x, y], self.cg_X[v], 1)
 
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
-            [[self.overlap_constraints[x,y].Pi for x in range(self.field.width)]
-            for y in range(self.field.height)]
+            [
+                [
+                    self.overlap_constraints[x, y].Pi
+                    for x in range(self.field.width)
+                ]
+                for y in range(self.field.height)
+            ]
         )
-    
+
     def _calculate_reduced_cost(self, variable: Zone) -> float:
-        return variable.score - self.cover_dual_box_sums[variable.box] - self.limit_constraint.Pi
-    
+        return (
+            variable.score
+            - self.cover_dual_box_sums[variable.box]
+            - self.limit_constraint.Pi
+        )
+
     def _extract_solution(self) -> DeterministicSolution:
         return DeterministicSolution(
-            [z for z in self.cg_X if round(self.cg_X[z].X) == 1], self.model.ObjVal
+            [z for z in self.cg_X if round(self.cg_X[z].X) == 1],
+            self.model.ObjVal,
         )
+
 
 class StochasticMipSolver:
     def __init__(
@@ -263,12 +286,12 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
         alpha: float,
         expectation_weight: float,
         field: SField,
-        config: CGSolverConfig
+        config: CGSolverConfig,
     ) -> None:
         super().__init__(zones, config, Sense.MAXIMISE)
 
         self.field = field
-        self.num_scenarios=self.field.num_scenarios
+        self.num_scenarios = self.field.num_scenarios
 
         # Non-CG Variables
         self.Beta = {s: self.model.addVar() for s in range(self.num_scenarios)}
@@ -278,8 +301,10 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
         # Objective
         self.model.setObjective(
             expectation_weight
-            * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios)) / self.num_scenarios
-            + (1-expectation_weight) * self.CVar, gp.GRB.MAXIMIZE
+            * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
+            / self.num_scenarios
+            + (1 - expectation_weight) * self.CVar,
+            gp.GRB.MAXIMIZE,
         )
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
         self.overlap_constraints = {
@@ -304,10 +329,10 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
 
         # RC Calculation Helpers
         self.cover_dual_box_sums: BoxDataLookup[float]
-    
+
     def _get_starting_variables(self) -> list[SZone]:
         return []
-    
+
     def _add_variable_to_objective_and_constraints(self, v: SZone) -> None:
         self.model.chgCoeff(self.limit_constraint, self.cg_X[v], 1)
         for s in range(self.num_scenarios):
@@ -315,25 +340,33 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
                 self.return_constraints[s], self.cg_X[v], -v.scores[s]
             )
         for x, y in v.iter_contents():
-            self.model.chgCoeff(
-                self.overlap_constraints[x,y], self.cg_X[v], 1
-            )
+            self.model.chgCoeff(self.overlap_constraints[x, y], self.cg_X[v], 1)
 
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
-            [[self.overlap_constraints[x,y].Pi for x in range(self.field.width)]
-            for y in range(self.field.height)]
+            [
+                [
+                    self.overlap_constraints[x, y].Pi
+                    for x in range(self.field.width)
+                ]
+                for y in range(self.field.height)
+            ]
         )
-    
+
     def _calculate_reduced_cost(self, variable: SZone) -> float:
-        return -self.cover_dual_box_sums[variable.box] - self.limit_constraint.Pi + sum(variable.scores[s] * self.return_constraints[s].Pi for s in range(self.num_scenarios))
-    
+        return (
+            -self.cover_dual_box_sums[variable.box]
+            - self.limit_constraint.Pi
+            + sum(
+                variable.scores[s] * self.return_constraints[s].Pi
+                for s in range(self.num_scenarios)
+            )
+        )
+
     def _extract_solution(self) -> StochasticSolution:
         return StochasticSolution(
             [z for z in self.cg_X if round(self.cg_X[z].X) == 1],
-            [
-                self.Beta[s].X for s in range(self.num_scenarios)
-            ]
+            [self.Beta[s].X for s in range(self.num_scenarios)],
         )
 
 
