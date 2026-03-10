@@ -307,6 +307,10 @@ class Zone:
             for y in range(self.box.y1, self.box.y2 + 1):
                 yield (x, y)
 
+    @cached_property
+    def turns(self) -> int:
+        return min(self.box.height, self.box.width)
+
     def __str__(self) -> str:
         return f"Zone((x1, y1)={(self.box.x1, self.box.y2)}, (x2,y2)={(self.box.x2, self.box.y2)}, score={round(self.score, 2)})"
 

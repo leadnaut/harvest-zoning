@@ -23,6 +23,7 @@ from zonings.solvers import (
     StochasticCGMIPSolver,
     StochasticDynamicSolver,
     StochasticMipSolver,
+    TurnAwareMIPSolver,
 )
 from zonings.visualisations import view_sfield_solution
 from zonings.zoning import make_zones
@@ -345,8 +346,8 @@ def quality_test():
             print("mip", cg_mip_results[-1])
             print("dp", dp_results[-1])
 
-            view_sfield_solution(f, mip_sol, 0.2)
-            view_sfield_solution(f, dp_sol, 0.2)
+            view_sfield_solution(f, mip_sol)
+            view_sfield_solution(f, dp_sol)
 
     print("MIP")
     print(mip_results)
@@ -372,3 +373,56 @@ def quality_test():
             list((m - d) / m * 100 for (m, d) in zip(mip_results, dp_results))
         ),
     )
+
+@cli.command
+@click.argument("field_slug")
+@click.argument("output_file", type=click.Path(writable=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--num-zones",
+    "-n",
+    type=int,
+    default=4
+)
+def find_turn_pareto_frontier(field_slug: str, output_file: Path,num_zones: int) -> None:
+    try:
+        field = load_field(field_slug, 2)
+    except FileNotFoundError as e:
+        print(e.args)
+        return None
+    pricing = PriceInfo(
+        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
+    )
+    zones = make_zones(
+        field,
+        ZoningConfig(
+            3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)
+        ),
+    )
+
+    gpc = (
+        field.protein_box_sums[field.bounding_box()]
+        / field.yield_box_sums[field.bounding_box()]
+    )
+
+    base_revenue = pricing.calculate_price(
+        gpc, field.yield_box_sums[field.bounding_box()]
+    )
+
+    field_turns = min(field.bounding_box().width, field.bounding_box().height)
+
+    with open(output_file, "w+") as output:
+        solver = TurnAwareMIPSolver(zones, num_zones, float("inf"), field, CGSolverConfig())
+        sol, _ = solver.solve()
+        turns = sum(z.turns for z in sol.zones)
+        output.write(f"revenue,revenue_ratio,turns,turn_ratio,zones\n")
+        output.write(f"{sol.revenue},{sol.revenue / base_revenue},{turns},{turns/field_turns},{len(sol.zones)}\n")
+        output.flush()
+        while len(sol.zones) > 1:
+            solver = TurnAwareMIPSolver(zones, num_zones, turns-1, field, CGSolverConfig())
+            sol, _ = solver.solve()
+            turns = sum(z.turns for z in sol.zones)
+            output.write(f"{sol.revenue},{sol.revenue / base_revenue},{turns},{(turns/field_turns)},{len(sol.zones)}\n")
+            output.flush()
+
+    print("field turns", field_turns)
+    print("field gpc", gpc)
