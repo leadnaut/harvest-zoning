@@ -374,16 +374,17 @@ def quality_test():
         ),
     )
 
+
 @cli.command
 @click.argument("field_slug")
-@click.argument("output_file", type=click.Path(writable=True, dir_okay=False, path_type=Path))
-@click.option(
-    "--num-zones",
-    "-n",
-    type=int,
-    default=4
+@click.argument(
+    "output_file",
+    type=click.Path(writable=True, dir_okay=False, path_type=Path),
 )
-def find_turn_pareto_frontier(field_slug: str, output_file: Path,num_zones: int) -> None:
+@click.option("--num-zones", "-n", type=int, default=4)
+def find_turn_pareto_frontier(
+    field_slug: str, output_file: Path, num_zones: int
+) -> None:
     try:
         field = load_field(field_slug, 2)
     except FileNotFoundError as e:
@@ -411,17 +412,25 @@ def find_turn_pareto_frontier(field_slug: str, output_file: Path,num_zones: int)
     field_turns = min(field.bounding_box().width, field.bounding_box().height)
 
     with open(output_file, "w+") as output:
-        solver = TurnAwareMIPSolver(zones, num_zones, float("inf"), field, CGSolverConfig())
+        solver = TurnAwareMIPSolver(
+            zones, num_zones, float("inf"), field, CGSolverConfig()
+        )
         sol, _ = solver.solve()
         turns = sum(z.turns for z in sol.zones)
-        output.write(f"revenue,revenue_ratio,turns,turn_ratio,zones\n")
-        output.write(f"{sol.revenue},{sol.revenue / base_revenue},{turns},{turns/field_turns},{len(sol.zones)}\n")
+        output.write("revenue,revenue_ratio,turns,turn_ratio,zones\n")
+        output.write(
+            f"{sol.revenue},{sol.revenue / base_revenue},{turns},{turns / field_turns},{len(sol.zones)}\n"
+        )
         output.flush()
         while len(sol.zones) > 1:
-            solver = TurnAwareMIPSolver(zones, num_zones, turns-1, field, CGSolverConfig())
+            solver = TurnAwareMIPSolver(
+                zones, num_zones, turns - 1, field, CGSolverConfig()
+            )
             sol, _ = solver.solve()
             turns = sum(z.turns for z in sol.zones)
-            output.write(f"{sol.revenue},{sol.revenue / base_revenue},{turns},{(turns/field_turns)},{len(sol.zones)}\n")
+            output.write(
+                f"{sol.revenue},{sol.revenue / base_revenue},{turns},{(turns / field_turns)},{len(sol.zones)}\n"
+            )
             output.flush()
 
     print("field turns", field_turns)

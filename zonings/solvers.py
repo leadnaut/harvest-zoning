@@ -205,44 +205,56 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
             [z for z in self.cg_X if round(self.cg_X[z].X) == 1],
             self.model.ObjVal,
         )
-    
+
+
 class TurnAwareMIPSolver(CGSolver[Zone, DeterministicSolution]):
-    def __init__(self, zones: list[Zone], max_zones: int, max_turns: float, field: Field, config: CGSolverConfig) -> None:
-        super().__init__(zones, config, Sense.MAXIMISE)    
+    def __init__(
+        self,
+        zones: list[Zone],
+        max_zones: int,
+        max_turns: float,
+        field: Field,
+        config: CGSolverConfig,
+    ) -> None:
+        super().__init__(zones, config, Sense.MAXIMISE)
 
         self.field = field
         self.model.setObjective(gp.LinExpr(0), gp.GRB.MAXIMIZE)
-        self.zone_limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
-        self.turn_limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_turns)
+        self.zone_limit_constraint = self.model.addConstr(
+            gp.LinExpr(0) <= max_zones
+        )
+        self.turn_limit_constraint = self.model.addConstr(
+            gp.LinExpr(0) <= max_turns
+        )
         self.overlap_constraints = {
             (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
             for x in range(field.width)
             for y in range(field.height)
         }
-        self.cover_dual_box_sums:BoxDataLookup[float]
-    
+        self.cover_dual_box_sums: BoxDataLookup[float]
+
     def _get_starting_variables(self) -> list[Zone]:
         return []
-    
+
     def _add_variable_to_objective_and_constraints(self, v: Zone) -> None:
         self.cg_X[v].Obj = v.score
         self.model.chgCoeff(self.zone_limit_constraint, self.cg_X[v], 1)
         self.model.chgCoeff(self.turn_limit_constraint, self.cg_X[v], v.turns)
 
-        for x,y in v.iter_contents():
-            self.model.chgCoeff(self.overlap_constraints[x,y], self.cg_X[v], 1)
+        for x, y in v.iter_contents():
+            self.model.chgCoeff(self.overlap_constraints[x, y], self.cg_X[v], 1)
 
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
             [
                 [
-                    self.overlap_constraints[x,y].Pi
+                    self.overlap_constraints[x, y].Pi
                     for x in range(self.field.width)
                 ]
                 for y in range(self.field.height)
             ]
         )
-    
+
     def _calculate_reduced_cost(self, variable: Zone) -> float:
         return (
             variable.score
@@ -254,7 +266,7 @@ class TurnAwareMIPSolver(CGSolver[Zone, DeterministicSolution]):
     def _extract_solution(self) -> DeterministicSolution:
         return DeterministicSolution(
             [z for z in self.cg_X if round(self.cg_X[z].X) == 1],
-            self.model.ObjVal
+            self.model.ObjVal,
         )
 
 
