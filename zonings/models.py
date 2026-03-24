@@ -29,9 +29,7 @@ class Box:
     def centre(self) -> tuple[float, float]:
         return (self.x1 + self.x2 + 1) / 2, (self.y1 + self.y2 + 1) / 2
 
-    def split(
-        self, x: Optional[int] = None, y: Optional[int] = None
-    ) -> tuple["Box", "Box"]:
+    def split(self, x: Optional[int] = None, y: Optional[int] = None) -> tuple["Box", "Box"]:
         if x is None and y is None:
             raise ValueError("have to split somewhere")
         if x is not None and self.x1 <= x < self.x2:
@@ -77,9 +75,7 @@ class BoxDataLookup(Generic[NumberT]):
     def from_grid(cls, grid: ListGrid[NumberT]) -> "BoxDataLookup[NumberT]":
         row_sums = [subsequence_sums(row) for row in grid]
 
-        return BoxDataLookup(
-            subsequence_sums(row_sums), max_x=len(grid[0]), max_y=len(grid)
-        )
+        return BoxDataLookup(subsequence_sums(row_sums), max_x=len(grid[0]), max_y=len(grid))
 
 
 @dataclass(frozen=True)
@@ -147,11 +143,7 @@ class PriceInfo:
 
     @cached_property
     def _reversed_lookup(self) -> list[tuple[float, float]]:
-        return list(
-            zip(
-                reversed(self.protein_minimums), reversed(self.price_per_tonnes)
-            )
-        )
+        return list(zip(reversed(self.protein_minimums), reversed(self.price_per_tonnes)))
 
     def calculate_price(self, gpc: float, yield_tonnes: float) -> float:
         if gpc < 0:
@@ -234,28 +226,18 @@ class SField:
     coordinates: Optional[tuple[float, float]] = None
 
     field_box_sums: BoxDataLookup[int] = field(init=False)
-    yield_box_sums: list[BoxDataLookup[float]] = field(
-        default_factory=list, init=False
-    )
-    protein_box_sums: list[BoxDataLookup[float]] = field(
-        default_factory=list, init=False
-    )
+    yield_box_sums: list[BoxDataLookup[float]] = field(default_factory=list, init=False)
+    protein_box_sums: list[BoxDataLookup[float]] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         print(f"Initializing stochastic field {self.field_id}")
-        if not (
-            self.num_scenarios == len(self.yield_maps) == len(self.gpc_maps)
-        ):
+        if not (self.num_scenarios == len(self.yield_maps) == len(self.gpc_maps)):
             raise ValueError("Number of maps does not match scenarios")
         self.field_box_sums = BoxDataLookup.from_grid(self.field_map)
         for s in range(self.num_scenarios):
-            self.yield_box_sums.append(
-                BoxDataLookup.from_grid(self.yield_maps[s])
-            )
+            self.yield_box_sums.append(BoxDataLookup.from_grid(self.yield_maps[s]))
             self.protein_box_sums.append(
-                BoxDataLookup.from_grid(
-                    np.multiply(self.yield_maps[s], self.gpc_maps[s]).tolist()
-                )
+                BoxDataLookup.from_grid(np.multiply(self.yield_maps[s], self.gpc_maps[s]).tolist())
             )
         print(f"Finished initalizing stochastic field {self.field_id}")
 
@@ -295,6 +277,26 @@ class SField:
                 prices.append(pricer.calculate_price(box_gpc, box_yield))
 
         return prices
+
+
+@dataclass
+class ScenarioMap:
+    yield_map: ListGrid[float]
+    gpc_map: ListGrid[float]
+
+    yield_box_sums: BoxDataLookup[float] = field(init=False)
+    protein_box_sums: BoxDataLookup[float] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.yield_box_sums = BoxDataLookup.from_grid(self.yield_map)
+        self.protein_box_sums = BoxDataLookup.from_grid(self.gpc_map)
+
+    def get_box_price(self, box: Box, pricer: PriceInfo) -> float:
+        box_yield = self.yield_box_sums[box]
+        if box_yield < 0.001:
+            return 0
+        box_gpc = self.protein_box_sums[box] / box_yield
+        return pricer.calculate_price(box_gpc, box_yield)
 
 
 @dataclass(frozen=True)

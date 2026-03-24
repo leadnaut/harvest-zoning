@@ -7,16 +7,19 @@ from time import sleep, time
 
 import click
 import numpy as np
+from matplotlib import pyplot as plt
 
-from zonings.constants import DEFAULT_PRICING
-from zonings.data_processing import load_field, load_sfield
-from zonings.models import CGSolverConfig, Field, PriceInfo, ZoningConfig
+from zonings.constants import DEFAULT_PRICING, GPC_ERROR, YIELD_ERROR_TONNES_PER_HA
+from zonings.data_processing import field_to_sfield, load_field, load_sfield
+from zonings.models import CGSolverConfig, Field, PriceInfo, ScenarioMap, ZoningConfig
 from zonings.pipelines import (
+    _guess_good_solve_parameters,
     dynamic_pipeline,
     mip_pipeline,
     stochastic_dynamic_pipeline,
     stochastic_mip_pipeline,
 )
+from zonings.solution_testing import score_solution_on_scenarios
 from zonings.solvers import (
     DeterministicMIPSolver,
     DynamicSolver,
@@ -25,8 +28,9 @@ from zonings.solvers import (
     StochasticMipSolver,
     TurnAwareMIPSolver,
 )
-from zonings.visualisations import view_sfield_solution
-from zonings.zoning import make_zones
+from zonings.utils import cvar
+from zonings.visualisations import view_field_solution, view_sfield_solution
+from zonings.zoning import flatten_szones, make_zones
 
 
 @click.group
@@ -67,13 +71,9 @@ def solve(
         case "dp":
             dynamic_pipeline(field_slug, output_dir, nzones=num_zones)
         case "smip":
-            stochastic_mip_pipeline(
-                field_slug, output_dir, alpha=alpha, nzones=num_zones
-            )
+            stochastic_mip_pipeline(field_slug, output_dir, alpha=alpha, nzones=num_zones)
         case "sdp":
-            stochastic_dynamic_pipeline(
-                field_slug, output_dir, alpha=alpha, nzones=num_zones
-            )
+            stochastic_dynamic_pipeline(field_slug, output_dir, alpha=alpha, nzones=num_zones)
         case _:
             raise NotImplementedError("Unreachable")
 
@@ -144,9 +144,7 @@ def debug(field_slug: str, alpha: float):
     with open(f"data/outs_smip/{field_slug}_kpis.csv", "r", newline="") as f:
         reader = csv.DictReader(f)
         row = next(reader)
-        sol_scores = [
-            float(v) for k, v in row.items() if k.startswith("solution")
-        ]
+        sol_scores = [float(v) for k, v in row.items() if k.startswith("solution")]
         base_scores = [float(v) for k, v in row.items() if k.startswith("base")]
 
         cvar_scenarios = int(alpha * len(sol_scores))
@@ -163,23 +161,24 @@ def debug(field_slug: str, alpha: float):
 @cli.command(hidden=True)
 def debug2():
     np.random.seed(2025)
-    f = load_sfield(field_slug="cy2022_118", merge_size=2, num_scenarios=100)
-    assert f is not None
-    solver = StochasticDynamicSolver(
+    f = load_field(slug="cy2022_29", merge_size=2)
+    zones = make_zones(f, ZoningConfig(4, 4, pricing=DEFAULT_PRICING))
+    solver = TurnAwareMIPSolver(
         field=f,
+        zones=zones,
         max_zones=4,
-        cvar_alpha=0.1,
-        expectation_weight=0,
-        config=ZoningConfig(4, 4, DEFAULT_PRICING),
+        max_turns=16,
+        config=CGSolverConfig(),
     )
 
     sol, info = solver.solve()
-    view_sfield_solution(f, sol)
+    ax = view_field_solution(f, sol)
+    plt.show()
 
 
 @cli.command(hidden=True)
 def debug3():
-    out = open("data/grid_fields.txt", "w")
+    out = open("data/high_benefit_fields.txt", "w")
     with open("data/fields.txt", "r") as f:
         for line in f:
             if line.startswith("#"):
@@ -189,7 +188,7 @@ def debug3():
                 field.protein_box_sums[field.bounding_box()]
                 / field.yield_box_sums[field.bounding_box()]
             )
-            if avg_gpc < 0.14:
+            if 0.1275 < avg_gpc < 0.13:
                 out.write(line)
     out.close()
 
@@ -198,9 +197,7 @@ def debug3():
 @click.argument("field_list", type=click.File("r"))
 @click.argument("output_file", type=click.File("w"))
 def grid_search(field_list: io.TextIOWrapper, output_file: io.TextIOWrapper):
-    pricing = PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )
+    pricing = PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360])
     fields: list[Field] = []
     for slug in field_list:
         if slug.startswith("#"):
@@ -269,20 +266,16 @@ def speed_test():
             tic = time()
             zones = make_zones(f, ZoningConfig(3, 3, DEFAULT_PRICING))
             mip_sol, mip_info = DeterministicMIPSolver(
-                zones, n, f, CGSolverConfig()
+                zones, n, f.width, f.height, CGSolverConfig()
             ).solve()
             toc = time()
             mip_times[n].append(toc - tic)
 
-            dp_sol, dp_info = DynamicSolver(
-                f, n, ZoningConfig(3, 3, DEFAULT_PRICING), None
-            ).solve()
+            dp_sol, dp_info = DynamicSolver(f, n, ZoningConfig(3, 3, DEFAULT_PRICING), None).solve()
             dp_times[n].append(dp_info.total_solve_seconds)
 
     for n in range(1, 7):
-        print(
-            f"{n},{sum(mip_times[n]) / len(mip_times[n])},{sum(dp_times[n]) / len(dp_times[n])}"
-        )
+        print(f"{n},{sum(mip_times[n]) / len(mip_times[n])},{sum(dp_times[n]) / len(dp_times[n])}")
 
 
 @cli.command(hidden=True)
@@ -361,77 +354,125 @@ def quality_test():
 
     print(
         "CG Gap",
-        np.mean(
-            list(
-                (m - c) / m * 100 for (m, c) in zip(mip_results, cg_mip_results)
-            )
-        ),
+        np.mean(list((m - c) / m * 100 for (m, c) in zip(mip_results, cg_mip_results))),
     )
     print(
         "DP Gap",
-        np.mean(
-            list((m - d) / m * 100 for (m, d) in zip(mip_results, dp_results))
-        ),
+        np.mean(list((m - d) / m * 100 for (m, d) in zip(mip_results, dp_results))),
     )
 
 
 @cli.command
-@click.argument("field_slug")
+@click.argument("field-list", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument(
-    "output_file",
-    type=click.Path(writable=True, dir_okay=False, path_type=Path),
+    "output-dir",
+    type=click.Path(exists=True, writable=True, file_okay=False, path_type=Path),
 )
 @click.option("--num-zones", "-n", type=int, default=4)
-def find_turn_pareto_frontier(
-    field_slug: str, output_file: Path, num_zones: int
-) -> None:
-    try:
-        field = load_field(field_slug, 2)
-    except FileNotFoundError as e:
-        print(e.args)
-        return None
-    pricing = PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )
-    zones = make_zones(
-        field,
-        ZoningConfig(
-            3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)
-        ),
-    )
-
-    gpc = (
-        field.protein_box_sums[field.bounding_box()]
-        / field.yield_box_sums[field.bounding_box()]
-    )
-
-    base_revenue = pricing.calculate_price(
-        gpc, field.yield_box_sums[field.bounding_box()]
-    )
-
-    field_turns = min(field.bounding_box().width, field.bounding_box().height)
-
-    with open(output_file, "w+") as output:
-        solver = TurnAwareMIPSolver(
-            zones, num_zones, float("inf"), field, CGSolverConfig()
-        )
-        sol, _ = solver.solve()
-        turns = sum(z.turns for z in sol.zones)
-        output.write("revenue,revenue_ratio,turns,turn_ratio,zones\n")
-        output.write(
-            f"{sol.revenue},{sol.revenue / base_revenue},{turns},{turns / field_turns},{len(sol.zones)}\n"
-        )
-        output.flush()
-        while len(sol.zones) > 1:
-            solver = TurnAwareMIPSolver(
-                zones, num_zones, turns - 1, field, CGSolverConfig()
+def find_turn_pareto_frontier(field_list: Path, output_dir: Path, num_zones: int) -> None:
+    fields: list[Field] = []
+    with open(field_list, "r") as file:
+        for line in file:
+            if line.startswith("#"):
+                continue
+            fields.append(
+                load_field(
+                    slug=line.strip(),
+                    merge_size=2,
+                )
             )
-            sol, _ = solver.solve()
-            turns = sum(z.turns for z in sol.zones)
-            output.write(
-                f"{sol.revenue},{sol.revenue / base_revenue},{turns},{(turns / field_turns)},{len(sol.zones)}\n"
-            )
-            output.flush()
 
-    print("field turns", field_turns)
-    print("field gpc", gpc)
+    pricing = PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360])
+    for field in fields:
+        fpath = output_dir / f"{field.field_id}.csv"
+        if fpath.exists():
+            continue
+
+        zones = make_zones(
+            field,
+            ZoningConfig(3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)),
+        )
+
+        gpc = (
+            field.protein_box_sums[field.bounding_box()]
+            / field.yield_box_sums[field.bounding_box()]
+        )
+
+        base_revenue = pricing.calculate_price(gpc, field.yield_box_sums[field.bounding_box()])
+
+        field_turns = min(field.bounding_box().width, field.bounding_box().height)
+
+        with open(fpath, "w+") as output:
+            output.write("revenue,revenue_ratio,turns,turn_ratio,zones\n")
+            max_turns = None
+            while True:
+                solver = TurnAwareMIPSolver(
+                    zones, num_zones, max_turns, field, _guess_good_solve_parameters(len(zones))
+                )
+                sol, _ = solver.solve()
+                ax = view_field_solution(field, sol)
+                ax.set_title(f"Field {field.field_id}, Max Turns = {max_turns}")
+                plt.savefig(output_dir / f"{field.field_id}_{max_turns}.pdf")
+                plt.close()
+
+                turns = sum(z.turns for z in sol.zones)
+
+                output.write(
+                    f"{sol.revenue},{sol.revenue / base_revenue},{turns},{turns / field_turns},{len(sol.zones)}\n"
+                )
+                output.flush()
+                max_turns = turns - 1
+                if sol.revenue < base_revenue:
+                    break
+
+        print("field turns", field_turns)
+        print("field gpc", gpc)
+
+
+@cli.command
+def flatten_zone_test():
+    N_SCENARIOS = 100
+    ALPHA = 0.2
+
+    field = load_field(slug="cy2022_193", merge_size=2)
+    sfield = field_to_sfield(field, YIELD_ERROR_TONNES_PER_HA, GPC_ERROR, N_SCENARIOS)
+    szones = make_zones(
+        sfield, ZoningConfig(minimum_width=3, minimum_height=3, pricing=DEFAULT_PRICING)
+    )
+
+    ssol, sinfo = StochasticCGMIPSolver(
+        szones,
+        max_zones=4,
+        alpha=ALPHA,
+        expectation_weight=0,
+        field=sfield,
+        config=_guess_good_solve_parameters(len(szones)),
+    ).solve()
+
+    zones = flatten_szones(szones, lambda scores: sorted(scores)[int(N_SCENARIOS * ALPHA)])
+
+    dsol, dinfo = DeterministicMIPSolver(
+        zones,
+        max_zones=4,
+        field_width=field.width,
+        field_height=field.height,
+        config=_guess_good_solve_parameters(len(zones)),
+    ).solve()
+
+    scores = score_solution_on_scenarios(
+        dsol,
+        [
+            ScenarioMap(yield_map, gpc_map)
+            for yield_map, gpc_map in zip(sfield.yield_maps, sfield.gpc_maps)
+        ],
+    )
+
+    print(
+        f"Optimal CVar: {cvar(ALPHA, ssol.revenue)}, Stoch. Solve Time {sinfo.total_solve_seconds} | Estimated CVaR: {cvar(ALPHA, scores)}, Det. Solve Time {dinfo.total_solve_seconds}"
+    )
+    view_sfield_solution(sfield, ssol)
+    plt.savefig("outputs/stoch_sol_2.pdf")
+    plt.close()
+    view_field_solution(field, dsol)
+    plt.savefig("outputs/det_sol")
+    plt.close()

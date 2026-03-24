@@ -17,21 +17,15 @@ from zonings.models import Field, SField
 from zonings.utils import no_numpy
 
 
-def pnormalise_arrays(
-    *arrays: np.ndarray, pad_value: float = 0
-) -> list[np.ndarray]:
+def pnormalise_arrays(*arrays: np.ndarray, pad_value: float = 0) -> list[np.ndarray]:
     """
     pad a series of arrays so they are all the same shape. arrays must have the
     same dimension. the returned array's shape will be the dimension-wise
     maximum of the input arrays.
     """
     n_arrays = len(arrays)
-    if any(
-        len(arrays[0].shape) != len(arrays[i].shape) for i in range(n_arrays)
-    ):
-        raise ValueError(
-            "Attempted to normalise arrays of different dimensions"
-        )
+    if any(len(arrays[0].shape) != len(arrays[i].shape) for i in range(n_arrays)):
+        raise ValueError("Attempted to normalise arrays of different dimensions")
     n_dims = len(arrays[0].shape)
 
     result = [a for a in arrays]
@@ -46,9 +40,7 @@ def pnormalise_arrays(
                         a,
                         np.full(
                             shape=[
-                                target_size - a.shape[i]
-                                if i == axis
-                                else a.shape[i]
+                                target_size - a.shape[i] if i == axis else a.shape[i]
                                 for i in range(n_dims)
                             ],
                             fill_value=pad_value,
@@ -67,12 +59,9 @@ def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
     """
     merged_shape = tuple(ceil(s / merge_size) for s in values.shape)
     pad_tuple = tuple(
-        (0, merged_shape[i] * merge_size - values.shape[i])
-        for i in range(len(merged_shape))
+        (0, merged_shape[i] * merge_size - values.shape[i]) for i in range(len(merged_shape))
     )
-    padded_values = np.pad(
-        values * mask, pad_tuple, mode="constant", constant_values=0
-    )
+    padded_values = np.pad(values * mask, pad_tuple, mode="constant", constant_values=0)
     padded_bounds = np.pad(mask, pad_tuple, mode="constant", constant_values=0)
     assert padded_values.shape == padded_bounds.shape
     sums = sum(
@@ -95,9 +84,7 @@ def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
     return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
 
 
-def load_field(
-    slug: str, merge_size: int, skip_init: bool = False, path_prefix: str = ""
-) -> Field:
+def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix: str = "") -> Field:
     print(f"Loading field {slug}")
     yield_file_path = path_prefix + YIELD_FILE_PATH_FORMAT.format(slug=slug)
     protein_file_path = path_prefix + PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
@@ -114,9 +101,7 @@ def load_field(
             yield_array: np.ndarray = yield_data.read(1)
             yield_array *= y_pixel_length**2 * KM2_TO_HA
     except (FileNotFoundError, RasterioIOError):
-        raise FileNotFoundError(
-            f"Couldn't find yield file (looked for {yield_file_path})"
-        )
+        raise FileNotFoundError(f"Couldn't find yield file (looked for {yield_file_path})")
 
     try:
         with rasterio.open(protein_file_path) as protein_data:
@@ -133,17 +118,11 @@ def load_field(
                 )
             protein_array: np.ndarray = protein_data.read(1)
     except (FileNotFoundError, RasterioIOError):
-        raise FileNotFoundError(
-            f"Couldn't find protein file (looked for {protein_file_path})"
-        )
+        raise FileNotFoundError(f"Couldn't find protein file (looked for {protein_file_path})")
 
     if yield_array.shape != protein_array.shape:
-        print(
-            f"Yield and protein data for {slug} have different shapes. Normalising"
-        )
-        yield_array, protein_array = pnormalise_arrays(
-            yield_array, protein_array
-        )
+        print(f"Yield and protein data for {slug} have different shapes. Normalising")
+        yield_array, protein_array = pnormalise_arrays(yield_array, protein_array)
 
     field_map = yield_array > 0.0001
 
@@ -189,8 +168,7 @@ def field_to_sfield(
         g_map = np.maximum(
             np.add(
                 field.gpc_map,
-                np.random.normal(0, gpc_error, (field.height, field.width))
-                * field_mask,
+                np.random.normal(0, gpc_error, (field.height, field.width)) * field_mask,
             ),
             np.zeros_like(field_mask),
         )
@@ -218,6 +196,6 @@ def load_sfield(
     gpc_error: float = GPC_ERROR,
     num_scenarios: int,
     path_prefix: str = "",
-) -> SField | None:
+) -> SField:
     field = load_field(field_slug, merge_size, True, path_prefix=path_prefix)
     return field_to_sfield(field, yield_error, gpc_error, num_scenarios)

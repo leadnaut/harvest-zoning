@@ -32,8 +32,7 @@ from zonings.zoning import make_zones
 
 def _guess_good_solve_parameters(n_zones: int) -> CGSolverConfig:
     return CGSolverConfig(
-        max_variables_added_per_cg_iteration=10 ** (floor(log10(n_zones)) - 3)
-        * 5
+        max_variables_added_per_cg_iteration=10 ** (floor(log10(n_zones)) - 3) * 5
     )
 
 
@@ -49,20 +48,13 @@ def output_results(
 
     # base revenue/s
     if isinstance(solution, StochasticSolution) and isinstance(field, SField):
-        kpis |= {
-            f"solution_{s}": solution.revenue[s]
-            for s in range(field.num_scenarios)
-        }
+        kpis |= {f"solution_{s}": solution.revenue[s] for s in range(field.num_scenarios)}
         kpis |= {
             f"base_{s}": score
-            for s, score in enumerate(
-                field.get_box_prices(field.bounding_box(), pricing)
-            )
+            for s, score in enumerate(field.get_box_prices(field.bounding_box(), pricing))
         }
 
-    elif isinstance(solution, DeterministicSolution) and isinstance(
-        field, Field
-    ):
+    elif isinstance(solution, DeterministicSolution) and isinstance(field, Field):
         kpis |= {"solution": solution.revenue}
         kpis |= {"base": field.get_box_price(field.bounding_box(), pricing)}
     else:
@@ -83,8 +75,7 @@ def output_results(
                 zones_info.append(asdict(z.box) | {"score": z.score})
             elif isinstance(z, SZone):
                 zones_info.append(
-                    asdict(z.box)
-                    | {f"score_{s}": z.scores[s] for s in range(len(z.scores))}
+                    asdict(z.box) | {f"score_{s}": z.scores[s] for s in range(len(z.scores))}
                 )
         writer = csv.DictWriter(file, zones_info[0].keys())
         writer.writeheader()
@@ -103,18 +94,14 @@ def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
     except FileNotFoundError as e:
         print(e.args)
         return None
-    pricing = PriceInfo(
-        [0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360]
-    )
+    pricing = PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360])
     zones = make_zones(
         field,
-        ZoningConfig(
-            3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)
-        ),
+        ZoningConfig(3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)),
     )
 
     mip = DeterministicMIPSolver(
-        zones, nzones, field, _guess_good_solve_parameters(len(zones))
+        zones, nzones, field.width, field.height, _guess_good_solve_parameters(len(zones))
     )
     sol, info = mip.solve()
 
@@ -137,9 +124,7 @@ def stochastic_mip_pipeline(
 
     try:
         np.random.seed(2025)
-        field = load_sfield(
-            field_slug=field_slug, merge_size=2, num_scenarios=50
-        )
+        field = load_sfield(field_slug=field_slug, merge_size=2, num_scenarios=50)
         if field is None:
             return
     except FileNotFoundError as e:
@@ -161,9 +146,7 @@ def stochastic_mip_pipeline(
     output_results(field, sol, DEFAULT_PRICING, output_dir, field_slug, info)
 
 
-def dynamic_pipeline(
-    field_slug: str, output_dir: Path, nzones: int = 4
-) -> None:
+def dynamic_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
 
@@ -202,9 +185,7 @@ def stochastic_dynamic_pipeline(
 
     try:
         np.random.seed(2025)
-        field = load_sfield(
-            field_slug=field_slug, merge_size=2, num_scenarios=100
-        )
+        field = load_sfield(field_slug=field_slug, merge_size=2, num_scenarios=100)
         if field is None:
             return
     except FileNotFoundError as e:

@@ -62,9 +62,7 @@ class CGSolver[VariableType: Hashable, SolutionType](ABC):
             self._add_variable_to_objective_and_constraints(v)
 
     @abstractmethod
-    def _add_variable_to_objective_and_constraints(
-        self, v: VariableType
-    ) -> None: ...
+    def _add_variable_to_objective_and_constraints(self, v: VariableType) -> None: ...
 
     @abstractmethod
     def _update_lp_sol_based_attributes(self) -> None:
@@ -88,10 +86,7 @@ class CGSolver[VariableType: Hashable, SolutionType](ABC):
             rc = self._calculate_reduced_cost(v)
             if rc * self.sense > 0.001:
                 good_rc_variables += 1
-                if (
-                    len(best_variables)
-                    < self.config.max_variables_added_per_cg_iteration
-                ):
+                if len(best_variables) < self.config.max_variables_added_per_cg_iteration:
                     heappush(best_variables, CGQueueNode(rc, v))
                 elif abs(rc) > abs(best_variables[0].reduced_cost):
                     heapreplace(best_variables, CGQueueNode(rc, v))
@@ -113,10 +108,7 @@ class CGSolver[VariableType: Hashable, SolutionType](ABC):
         initial_variables = self._get_starting_variables()
         self._add_variables_to_model(initial_variables)
         total_variables = len(initial_variables)
-        while (
-            not self.config.max_cg_iterations
-            or cg_iterations < self.config.max_cg_iterations
-        ):
+        while not self.config.max_cg_iterations or cg_iterations < self.config.max_cg_iterations:
             self.model.optimize()
             cg_iterations += 1
 
@@ -154,20 +146,22 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
         self,
         zones: list[Zone],
         max_zones: int,
-        field: Field,
+        field_width: int,
+        field_height: int,
         config: CGSolverConfig,
     ) -> None:
         super().__init__(zones, config, Sense.MAXIMISE)
 
-        self.field = field
+        self.field_width = field_width
+        self.field_height = field_height
 
         self.model.setObjective(gp.LinExpr(0), gp.GRB.MAXIMIZE)
 
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
         self.overlap_constraints = {
             (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
-            for x in range(field.width)
-            for y in range(field.height)
+            for x in range(field_width)
+            for y in range(field_height)
         }
 
         # RC Calculation Helpers
@@ -185,20 +179,13 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
             [
-                [
-                    self.overlap_constraints[x, y].Pi
-                    for x in range(self.field.width)
-                ]
-                for y in range(self.field.height)
+                [self.overlap_constraints[x, y].Pi for x in range(self.field_width)]
+                for y in range(self.field_height)
             ]
         )
 
     def _calculate_reduced_cost(self, variable: Zone) -> float:
-        return (
-            variable.score
-            - self.cover_dual_box_sums[variable.box]
-            - self.limit_constraint.Pi
-        )
+        return variable.score - self.cover_dual_box_sums[variable.box] - self.limit_constraint.Pi
 
     def _extract_solution(self) -> DeterministicSolution:
         return DeterministicSolution(
@@ -212,7 +199,7 @@ class TurnAwareMIPSolver(CGSolver[Zone, DeterministicSolution]):
         self,
         zones: list[Zone],
         max_zones: int,
-        max_turns: float,
+        max_turns: float | None,
         field: Field,
         config: CGSolverConfig,
     ) -> None:
@@ -220,11 +207,10 @@ class TurnAwareMIPSolver(CGSolver[Zone, DeterministicSolution]):
 
         self.field = field
         self.model.setObjective(gp.LinExpr(0), gp.GRB.MAXIMIZE)
-        self.zone_limit_constraint = self.model.addConstr(
-            gp.LinExpr(0) <= max_zones
-        )
+        self.zone_limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
+
         self.turn_limit_constraint = self.model.addConstr(
-            gp.LinExpr(0) <= max_turns
+            gp.LinExpr(0) <= (max_turns or gp.GRB.INFINITY)
         )
         self.overlap_constraints = {
             (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
@@ -247,10 +233,7 @@ class TurnAwareMIPSolver(CGSolver[Zone, DeterministicSolution]):
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
             [
-                [
-                    self.overlap_constraints[x, y].Pi
-                    for x in range(self.field.width)
-                ]
+                [self.overlap_constraints[x, y].Pi for x in range(self.field.width)]
                 for y in range(self.field.height)
             ]
         )
@@ -290,8 +273,7 @@ class StochasticMipSolver:
         self.CVar = self.model.addVar()
 
         self.model.setObjective(
-            expectation_weight
-            * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
+            expectation_weight * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
             + (1 - expectation_weight) * self.CVar,
             gp.GRB.MAXIMIZE,
         )
@@ -306,14 +288,10 @@ class StochasticMipSolver:
         }
         for z in self.zones:
             for x, y in z.iter_contents():
-                self.model.chgCoeff(
-                    self.overlap_constraints[x, y], self.X[z], 1
-                )
+                self.model.chgCoeff(self.overlap_constraints[x, y], self.X[z], 1)
         self.return_constraints = {
             s: self.model.addConstr(
-                self.Beta[s]
-                - gp.quicksum(self.X[z] * z.scores[s] for z in self.X)
-                == 0
+                self.Beta[s] - gp.quicksum(self.X[z] * z.scores[s] for z in self.X) == 0
             )
             for s in range(self.num_scenarios)
         }
@@ -334,10 +312,7 @@ class StochasticMipSolver:
         zones = [z for z in self.X if self.X[z].X > 0.01]
         return StochasticSolution(
             zones,
-            [
-                sum(z.scores[s] for z in zones)
-                for s in range(self.num_scenarios)
-            ],
+            [sum(z.scores[s] for z in zones) for s in range(self.num_scenarios)],
         )
 
 
@@ -376,8 +351,7 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
             for y in range(field.height)
         }
         self.return_constraints = {
-            s: self.model.addConstr(self.Beta[s] == 0)
-            for s in range(self.num_scenarios)
+            s: self.model.addConstr(self.Beta[s] == 0) for s in range(self.num_scenarios)
         }
         self.var_constraints = {
             s: self.model.addConstr(self.Beta[s] + self.BetaM[s] >= self.Var)
@@ -399,19 +373,14 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
     def _add_variable_to_objective_and_constraints(self, v: SZone) -> None:
         self.model.chgCoeff(self.limit_constraint, self.cg_X[v], 1)
         for s in range(self.num_scenarios):
-            self.model.chgCoeff(
-                self.return_constraints[s], self.cg_X[v], -v.scores[s]
-            )
+            self.model.chgCoeff(self.return_constraints[s], self.cg_X[v], -v.scores[s])
         for x, y in v.iter_contents():
             self.model.chgCoeff(self.overlap_constraints[x, y], self.cg_X[v], 1)
 
     def _update_lp_sol_based_attributes(self) -> None:
         self.cover_dual_box_sums = BoxDataLookup.from_grid(
             [
-                [
-                    self.overlap_constraints[x, y].Pi
-                    for x in range(self.field.width)
-                ]
+                [self.overlap_constraints[x, y].Pi for x in range(self.field.width)]
                 for y in range(self.field.height)
             ]
         )
@@ -459,10 +428,7 @@ class DynamicSolver:
 
     def zone_box(self, box: Box, n_zones: int) -> tuple[float, list[Box]]:
         result: tuple[float, list[Box]]
-        if (
-            self.timeout is not None
-            and time() - self.solve_start > self.timeout
-        ):
+        if self.timeout is not None and time() - self.solve_start > self.timeout:
             return (0, [])
 
         if (box, n_zones) in self.lookup:
@@ -487,15 +453,11 @@ class DynamicSolver:
             horizontal_splits = [box.split(x=x) for x in range(box.x1, box.x2)]
             vertical_splits = [box.split(y=y) for y in range(box.y1, box.y2)]
             split_values.extend(
-                self._combine_solution(
-                    self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1)
-                )
+                self._combine_solution(self.zone_box(b1, n1), self.zone_box(b2, n_zones - n1))
                 for b1, b2 in horizontal_splits + vertical_splits
                 for n1 in range(1, n_zones)
             )
-            result = max(
-                split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1]))
-            )
+            result = max(split_values, key=lambda tup: (round(tup[0], 2), -len(tup[1])))
 
         self.lookup[box, n_zones] = result
         return result
@@ -509,9 +471,7 @@ class DynamicSolver:
         self.lookup = {}
         val, boxes = self.zone_box(self.field.bounding_box(), self.max_zones)
         toc = time()
-        print(
-            f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits"
-        )
+        print(f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits")
         return DeterministicSolution(
             [Zone(b, self._score_box(b)) for b in boxes],
             val,
@@ -561,23 +521,14 @@ class StochasticDynamicSolver:
     def _combine_and_score_sub_solutions(
         self, s1: SDPPartialSol, s2: SDPPartialSol
     ) -> SDPPartialSol:
-        scores = [
-            s1.scores[s] + s2.scores[s] for s in range(self.total_scenarios)
-        ]
-        return SDPPartialSol(
-            self.objective(scores), s1.boxes + s2.boxes, scores
-        )
+        scores = [s1.scores[s] + s2.scores[s] for s in range(self.total_scenarios)]
+        return SDPPartialSol(self.objective(scores), s1.boxes + s2.boxes, scores)
 
     def zone_box(self, box: Box, n_zones: int) -> SDPPartialSol:
         """returns (objective value, boxes, revenue in each scenario)"""
         result: SDPPartialSol
-        if (
-            self.timeout is not None
-            and time() - self.solve_start > self.timeout
-        ):
-            return SDPPartialSol(
-                0, [], [0 for _ in range(self.total_scenarios)]
-            )
+        if self.timeout is not None and time() - self.solve_start > self.timeout:
+            return SDPPartialSol(0, [], [0 for _ in range(self.total_scenarios)])
 
         if (box, n_zones) in self.lookup:
             self.cache_hits += 1
@@ -591,9 +542,7 @@ class StochasticDynamicSolver:
                 and self.field.field_box_sums[box] < self.config.minimum_pixels
             )
         ):
-            result = SDPPartialSol(
-                0, [], [0 for _ in range(self.total_scenarios)]
-            )
+            result = SDPPartialSol(0, [], [0 for _ in range(self.total_scenarios)])
 
         elif n_zones == 1:
             result = self._base_case(box)
@@ -619,9 +568,7 @@ class StochasticDynamicSolver:
         return result
 
     def solve(self) -> tuple[StochasticSolution, DPSolveInfo]:
-        print(
-            f"Starting stochastic dynamic programming solve for {self.field.field_id}"
-        )
+        print(f"Starting stochastic dynamic programming solve for {self.field.field_id}")
         tic = time()
         if self.timeout is not None:
             self.solve_start = tic
@@ -629,9 +576,7 @@ class StochasticDynamicSolver:
         self.lookup = {}
         sol = self.zone_box(self.field.bounding_box(), self.max_zones)
         toc = time()
-        print(
-            f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits"
-        )
+        print(f"Solve done! Calculated {len(self.lookup)} nodes with {self.cache_hits} cache hits")
         print(f"Objective: {sol.objective}")
         zones = [
             SZone(
@@ -640,9 +585,7 @@ class StochasticDynamicSolver:
             )
             for b in sol.boxes
         ]
-        scores = [
-            sum(z.scores[s] for z in zones) for s in range(self.total_scenarios)
-        ]
+        scores = [sum(z.scores[s] for z in zones) for s in range(self.total_scenarios)]
         if (calculated := self.objective(scores)) != sol.objective:
             print(f"Calculated: {calculated}\nReturned: {sol.objective}")
         return StochasticSolution(

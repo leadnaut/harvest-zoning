@@ -28,17 +28,14 @@ def plotting_zone_info(zone: Zone | SZone, field: Field | SField) -> str:
 
     if type(zone) is SZone and type(field) is SField:
         gpcs = sorted(
-            field.protein_box_sums[s][zone.box]
-            / field.yield_box_sums[s][zone.box]
+            field.protein_box_sums[s][zone.box] / field.yield_box_sums[s][zone.box]
             for s in range(field.num_scenarios)
         )
         worst = gpcs[0] * 100
         best = gpcs[-1] * 100
         average = sum(gpcs) / len(gpcs) * 100
 
-        return (
-            f"Worst: {worst: .2f}%\nAverage: {average:.2f}%\nBest: {best:.2f}%"
-        )
+        return f"Worst: {worst: .2f}%\nAverage: {average:.2f}%\nBest: {best:.2f}%"
 
     return "test"
 
@@ -56,9 +53,7 @@ def view_field_solution(field: Field, solution: DeterministicSolution):
     return ax
 
 
-def view_sfield_scenario(
-    field: SField, solution: StochasticSolution, s: int
-) -> Axes:
+def view_sfield_scenario(field: SField, solution: StochasticSolution, s: int) -> Axes:
     maximum_gpc = max(map(max, map(max, field.gpc_maps)))
     plt.clf()
     ax = sns.heatmap(

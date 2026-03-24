@@ -1,4 +1,4 @@
-from typing import overload
+from typing import Callable, overload
 
 from zonings.models import (
     Box,
@@ -40,9 +40,7 @@ def make_zones(field: Field, config: ZoningConfig) -> list[Zone]: ...
 def make_zones(field: SField, config: ZoningConfig) -> list[SZone]: ...
 
 
-def make_zones(
-    field: Field | SField, config: ZoningConfig
-) -> list[Zone] | list[SZone]:
+def make_zones(field: Field | SField, config: ZoningConfig) -> list[Zone] | list[SZone]:
     print("Creating Boxes")
     boxes = [
         Box(x1, y1, x2, y2)
@@ -55,8 +53,7 @@ def make_zones(
             and y2 - y1 + 1 >= config.minimum_height
             and (
                 config.minimum_pixels is None
-                or field.field_box_sums[Box(x1, y1, x2, y2)]
-                >= config.minimum_pixels
+                or field.field_box_sums[Box(x1, y1, x2, y2)] >= config.minimum_pixels
             )
         )
     ]
@@ -74,3 +71,7 @@ def make_zones(
             print(f"{i / nboxes * 100:.2f}%", end="\r")
 
     return zones
+
+
+def flatten_szones(zones: list[SZone], agg: Callable[[list[float]], float]) -> list[Zone]:
+    return [Zone(z.box, agg(z.scores)) for z in zones]
