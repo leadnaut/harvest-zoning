@@ -1,4 +1,4 @@
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import numpy as np
 
@@ -8,7 +8,8 @@ def no_numpy(value) -> Any:
 
 
 SummableT = TypeVar("SummableT", bound=float | int | np.ndarray)
-
+T = TypeVar("T", bound = float | int)
+ListGrid = list[list[T]]
 
 def subsequence_sums(
     seq: list[SummableT],
@@ -29,3 +30,6 @@ def subsequence_sums(
 def cvar(alpha: float, seq: list[float | int]) -> float:
     number = int(alpha * len(seq))
     return sum(sorted(seq)[:number]) / number
+
+def sum_list_grid(list_grid: ListGrid[T]) -> T:
+    return cast(T, sum(sum(row) for row in list_grid))

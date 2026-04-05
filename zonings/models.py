@@ -4,10 +4,8 @@ from typing import Any, Generator, Generic, Optional, TypeVar
 
 import numpy as np
 
-from zonings.utils import subsequence_sums
+from zonings.utils import subsequence_sums, ListGrid
 
-T = TypeVar("T")
-ListGrid = list[list[T]]
 
 
 @dataclass(frozen=True)
@@ -54,6 +52,12 @@ class Box:
             other.y2,
         )
 
+    def __repr__(self) -> str:
+        return f"Box(xs: {self.x1} - {self.x2}, ys: {self.y1} - {self.y2})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
 
 NumberT = TypeVar("NumberT", bound=float | int)
 
@@ -69,6 +73,8 @@ class BoxDataLookup(Generic[NumberT]):
     max_y: int
 
     def __getitem__(self, b: Box) -> NumberT:
+        if b.x2 < b.x1 or b.x2 > self.max_x or b.y2 < b.y1 or b.y2 > self.max_y:
+            raise KeyError(b)
         return self.data[b.y1 * self.max_y + b.y2][b.x1 * self.max_x + b.x2]
 
     @classmethod
@@ -159,7 +165,7 @@ class Field:
     field_id: str
     height: int
     width: int
-    pixel_area: float
+    pixel_size_km: float
     field_map: ListGrid[int]
     yield_map: ListGrid[float]
     gpc_map: ListGrid[float]
@@ -180,6 +186,10 @@ class Field:
             np.multiply(self.yield_map, self.gpc_map).tolist()
         )
         print(f"Finished intializing field {self.field_id}")
+    
+    @property
+    def pixel_area(self) -> float:
+        return self.pixel_size_km**2
 
     def pixels_in_box(self, box: Box) -> int:
         return self.field_box_sums[box]
@@ -289,7 +299,9 @@ class ScenarioMap:
 
     def __post_init__(self) -> None:
         self.yield_box_sums = BoxDataLookup.from_grid(self.yield_map)
-        self.protein_box_sums = BoxDataLookup.from_grid(self.gpc_map)
+        self.protein_box_sums = BoxDataLookup.from_grid(
+            np.multiply(self.yield_map, self.gpc_map).tolist()
+        )
 
     def get_box_price(self, box: Box, pricer: PriceInfo) -> float:
         box_yield = self.yield_box_sums[box]

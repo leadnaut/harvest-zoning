@@ -9,9 +9,18 @@ import click
 import numpy as np
 from matplotlib import pyplot as plt
 
-from zonings.constants import DEFAULT_PRICING, GPC_ERROR, YIELD_ERROR_TONNES_PER_HA
+from zonings.constants import DEFAULT_PRICING, GPC_ERROR, KM2_TO_HA, YIELD_ERROR_TONNES_PER_HA
 from zonings.data_processing import field_to_sfield, load_field, load_sfield
-from zonings.models import CGSolverConfig, Field, PriceInfo, ScenarioMap, ZoningConfig
+from zonings.models import (
+    CGSolverConfig,
+    Field,
+    PriceInfo,
+    SField,
+    SZone,
+    ScenarioMap,
+    Zone,
+    ZoningConfig,
+)
 from zonings.pipelines import (
     _guess_good_solve_parameters,
     dynamic_pipeline,
@@ -28,7 +37,7 @@ from zonings.solvers import (
     StochasticMipSolver,
     TurnAwareMIPSolver,
 )
-from zonings.utils import cvar
+from zonings.utils import cvar, sum_list_grid
 from zonings.visualisations import view_field_solution, view_sfield_solution
 from zonings.zoning import flatten_szones, make_zones
 
@@ -265,9 +274,7 @@ def speed_test():
         for f in fields:
             tic = time()
             zones = make_zones(f, ZoningConfig(3, 3, DEFAULT_PRICING))
-            mip_sol, mip_info = DeterministicMIPSolver(
-                zones, n, f.width, f.height, CGSolverConfig()
-            ).solve()
+            mip_sol, mip_info = DeterministicMIPSolver(zones, n, f, CGSolverConfig()).solve()
             toc = time()
             mip_times[n].append(toc - tic)
 
@@ -430,49 +437,150 @@ def find_turn_pareto_frontier(field_list: Path, output_dir: Path, num_zones: int
 
 
 @cli.command
-def flatten_zone_test():
-    N_SCENARIOS = 100
-    ALPHA = 0.2
+@click.argument("field-list", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("output", type=click.Path(dir_okay=False, path_type=Path))
+def flatten_zone_test(field_list: Path, output: Path):
+    N_SCENARIOS = 200
+    ALPHAS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-    field = load_field(slug="cy2022_193", merge_size=2)
-    sfield = field_to_sfield(field, YIELD_ERROR_TONNES_PER_HA, GPC_ERROR, N_SCENARIOS)
-    szones = make_zones(
-        sfield, ZoningConfig(minimum_width=3, minimum_height=3, pricing=DEFAULT_PRICING)
-    )
+    with open(field_list, "r") as field_file:
+        slugs = [line.strip() for line in field_file if not line.startswith("#")]
+    
+    if output.exists():
+        pre_exists = True
+        output_file = open(output, "r")
+        pre_calced = {(str(line['slug']), float(line['alpha'])) for line in csv.DictReader(output_file)}
+        output_file.close()
+    else:
+        pre_exists = False
+        pre_calced = set()
+    
+    if pre_exists:
+        output_file = open(output, "a")
+    else:
+        output_file = open(output, "x")
 
-    ssol, sinfo = StochasticCGMIPSolver(
-        szones,
-        max_zones=4,
-        alpha=ALPHA,
-        expectation_weight=0,
-        field=sfield,
-        config=_guess_good_solve_parameters(len(szones)),
-    ).solve()
 
-    zones = flatten_szones(szones, lambda scores: sorted(scores)[int(N_SCENARIOS * ALPHA)])
-
-    dsol, dinfo = DeterministicMIPSolver(
-        zones,
-        max_zones=4,
-        field_width=field.width,
-        field_height=field.height,
-        config=_guess_good_solve_parameters(len(zones)),
-    ).solve()
-
-    scores = score_solution_on_scenarios(
-        dsol,
+    writer = csv.DictWriter(
+        output_file,
         [
-            ScenarioMap(yield_map, gpc_map)
-            for yield_map, gpc_map in zip(sfield.yield_maps, sfield.gpc_maps)
+            "slug",
+            "alpha",
+            "optimal_objective",
+            "flattened_objective",
+            "optimal_time",
+            "flattened_time",
         ],
     )
+    if not pre_exists:
+        writer.writeheader()
 
-    print(
-        f"Optimal CVar: {cvar(ALPHA, ssol.revenue)}, Stoch. Solve Time {sinfo.total_solve_seconds} | Estimated CVaR: {cvar(ALPHA, scores)}, Det. Solve Time {dinfo.total_solve_seconds}"
-    )
-    view_sfield_solution(sfield, ssol)
-    plt.savefig("outputs/stoch_sol_2.pdf")
-    plt.close()
-    view_field_solution(field, dsol)
-    plt.savefig("outputs/det_sol")
-    plt.close()
+    for slug in slugs:
+        if all((slug, alpha) in pre_calced for alpha in ALPHAS):
+            continue
+        field = load_field(slug, merge_size=2)
+        sfield = field_to_sfield(field, YIELD_ERROR_TONNES_PER_HA, GPC_ERROR, N_SCENARIOS)
+        scenarios = [
+            ScenarioMap(yields, gpcs)
+            for yields, gpcs in zip(sfield.yield_maps, sfield.gpc_maps)
+        ]
+        szones = make_zones(
+            sfield, ZoningConfig(minimum_width=3, minimum_height=3, pricing=DEFAULT_PRICING)
+        )
+        for alpha in ALPHAS:
+            if (slug, alpha) in pre_calced:
+                continue    
+            
+            flat_zones = flatten_szones(
+                szones, lambda scores: 0.5 * cvar(alpha, scores) + 0.5 * sum(scores)/len(scores)
+            )
+
+            sto_sol, sto_info = StochasticMipSolver(
+                szones,
+                max_zones=4,
+                alpha=alpha,
+                expectation_weight=0.5,
+                field=sfield,
+            ).solve()
+
+            det_sol, det_info = DeterministicMIPSolver(
+                flat_zones,
+                max_zones=4,
+                field=field,
+                config=_guess_good_solve_parameters(len(flat_zones)),
+            ).solve()
+
+            det_revenues = score_solution_on_scenarios(det_sol, scenarios)
+
+            writer.writerow(
+                {
+                    "slug": slug,
+                    "alpha": alpha,
+                    "optimal_objective": cvar(alpha, sto_sol.revenue),
+                    "flattened_objective": cvar(alpha, det_revenues),
+                    "optimal_time": sto_info.total_solve_seconds,
+                    "flattened_time": det_info.total_solve_seconds,
+                }
+            )
+            output_file.flush()
+    output_file.close()
+
+
+@cli.command()
+@click.argument("field_list", type=click.Path(path_type=Path))
+def field_stats(field_list:Path) -> None:
+    with open(field_list, "r") as field_file:
+        slugs = [line.strip() for line in field_file if not line.startswith("#")]
+    
+    field_area_pixelss = []
+    field_area_has = []
+    gpcs = []
+    for slug in slugs:
+        field = load_field(slug, merge_size=1, skip_init=True)
+        short_slug = slug.removeprefix("cy2022_")
+
+        width_pix, height_pix = field.width, field.height
+        width_km, height_km = map(lambda x: x*field.pixel_size_km, (width_pix, height_pix))
+
+        field_area_pixels = sum_list_grid(field.field_map)
+        field_area_ha = field_area_pixels * field.pixel_area * KM2_TO_HA
+        if field_area_ha > 300: continue
+
+        field_area_has.append(field_area_ha)
+        field_area_pixelss.append(field_area_pixels)
+
+        total_yield = sum_list_grid(field.yield_map)
+        average_gpc_percent = sum_list_grid(field.gpc_map) / field_area_pixels * 100
+        gpcs.append(average_gpc_percent)
+
+        print(f"{short_slug} & ${width_pix}\\times{height_pix}$ & ${width_km:.2f}\\km\\times{height_km:.2f}\\km$ & {field_area_pixels} & {field_area_ha:.2f}ha & {total_yield:.2f}t & {average_gpc_percent:.2f}\\%\\\\")
+
+    areas_and_slugs = list(zip(field_area_has, slugs))
+    data_s_s = set(s for a,s in areas_and_slugs if a < 50)
+    data_s_m = set(s for a,s in areas_and_slugs if 50<= a < 125)
+    data_s_l = set(s for a,s in areas_and_slugs if 125 <= a)
+
+    gpcs_and_slugs = list(zip(gpcs, slugs))
+    data_q_l = set(s for p,s in gpcs_and_slugs if p < 13)
+    data_q_m = set(s for p,s in gpcs_and_slugs if 13 <= p < 14)
+    data_q_h = set(s for p,s in gpcs_and_slugs if 14 < p)
+
+    print("size S", *sorted(data_s_s),sep="\n")
+    print("size M", *sorted(data_s_m),sep="\n")
+    print("size L", *sorted(data_s_l),sep="\n")
+
+    print("gpc L", *sorted(data_q_l),sep="\n")
+    print("gpc M", *sorted(data_q_m),sep="\n")
+    print("gpc H", *sorted(data_q_h),sep="\n")
+
+    for (s, sset), (q, qset) in product(
+        [("s", data_s_s), ("m", data_s_m), ("l", data_s_l)],
+        [("l", data_q_l), ("m", data_q_m), ("h", data_q_h)]
+    ):
+        print(f"size {s} qual {q}: {len(sset & qset)}")
+    
+    plt.hist(gpcs, bins=20)
+    plt.title("Test Data Field Average GPC")
+    plt.xlabel("Average GPC (%)")
+    plt.ylabel("Count")
+    plt.savefig("plots/field_gpcs.png", dpi=200)

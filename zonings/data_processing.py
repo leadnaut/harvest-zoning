@@ -85,7 +85,7 @@ def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
 
 
 def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix: str = "") -> Field:
-    print(f"Loading field {slug}")
+    # print(f"Loading field {slug}")
     yield_file_path = path_prefix + YIELD_FILE_PATH_FORMAT.format(slug=slug)
     protein_file_path = path_prefix + PROTEIN_FILE_PATH_FORMAT.format(slug=slug)
 
@@ -125,7 +125,6 @@ def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix:
         yield_array, protein_array = pnormalise_arrays(yield_array, protein_array)
 
     field_map = yield_array > 0.0001
-
     merged_yield = _average_pixels(yield_array, field_map, merge_size)
     merged_protein = _average_pixels(protein_array, field_map, merge_size)
     merged_pixel_size = y_pixel_length * merge_size
@@ -134,7 +133,7 @@ def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix:
         field_id=slug,
         height=merged_yield.shape[0],
         width=merged_yield.shape[1],
-        pixel_area=merged_pixel_size**2,
+        pixel_size_km=merged_pixel_size,
         field_map=no_numpy(merged_yield > 0.001),
         yield_map=no_numpy(merged_yield),
         gpc_map=no_numpy(merged_protein / 100),

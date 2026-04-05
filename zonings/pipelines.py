@@ -100,9 +100,7 @@ def mip_pipeline(field_slug: str, output_dir: Path, nzones: int = 4) -> None:
         ZoningConfig(3, 3, pricing, minimum_pixels=int(field.width * field.height * 0.1)),
     )
 
-    mip = DeterministicMIPSolver(
-        zones, nzones, field.width, field.height, _guess_good_solve_parameters(len(zones))
-    )
+    mip = DeterministicMIPSolver(zones, nzones, field, _guess_good_solve_parameters(len(zones)))
     sol, info = mip.solve()
 
     # write outputs:

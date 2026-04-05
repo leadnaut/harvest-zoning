@@ -21,6 +21,7 @@ from zonings.models import (
     Zone,
     ZoningConfig,
 )
+from zonings.utils import cvar
 
 
 @dataclass(frozen=True)
@@ -146,22 +147,21 @@ class DeterministicMIPSolver(CGSolver[Zone, DeterministicSolution]):
         self,
         zones: list[Zone],
         max_zones: int,
-        field_width: int,
-        field_height: int,
+        field: Field,
         config: CGSolverConfig,
     ) -> None:
         super().__init__(zones, config, Sense.MAXIMISE)
 
-        self.field_width = field_width
-        self.field_height = field_height
+        self.field_width = field.width
+        self.field_height = field.height
 
         self.model.setObjective(gp.LinExpr(0), gp.GRB.MAXIMIZE)
 
         self.limit_constraint = self.model.addConstr(gp.LinExpr(0) <= max_zones)
         self.overlap_constraints = {
             (x, y): self.model.addConstr(gp.LinExpr(0) <= 1)
-            for x in range(field_width)
-            for y in range(field_height)
+            for x in range(field.width)
+            for y in range(field.height)
         }
 
         # RC Calculation Helpers
@@ -262,6 +262,7 @@ class StochasticMipSolver:
         expectation_weight: float,
         field: SField,
     ) -> None:
+        self.alpha = alpha
         self.zones = zones
         self.model = gp.Model()
 
@@ -272,11 +273,17 @@ class StochasticMipSolver:
         self.Var = self.model.addVar()
         self.CVar = self.model.addVar()
 
-        self.model.setObjective(
+        self.model.ModelSense = gp.GRB.MAXIMIZE
+        self.model.setObjectiveN(
             expectation_weight * gp.quicksum(self.Beta[s] for s in range(self.num_scenarios))
             + (1 - expectation_weight) * self.CVar,
-            gp.GRB.MAXIMIZE,
+            index=0,
+            priority=2,
+            name="main_obj",
         )
+        # self.model.setObjectiveN(
+        #     -1 * gp.quicksum(var for var in self.X.values()), index=1, priority=1, name="nzones"
+        # )
 
         self.limit_constraint = self.model.addConstr(
             gp.quicksum(self.X[z] for z in self.X) <= max_zones
@@ -306,14 +313,22 @@ class StochasticMipSolver:
             * gp.quicksum(self.BetaM[s] for s in range(self.num_scenarios))
         )
 
-    def solve(self) -> StochasticSolution:
+    def solve(self) -> tuple[StochasticSolution, CGSolveInfo]:
+        self.model.setParam("PreSolve", 0)
+        tic = time()
         self.model.optimize()
+        toc = time()
         print("Objective Value", self.model.ObjVal)
+        print("CVaR variable", self.CVar.X)
         zones = [z for z in self.X if self.X[z].X > 0.01]
+        scores = [sum(z.scores[s] for z in zones) for s in range(self.num_scenarios)]
+        calculated_cvar = cvar(self.alpha, scores)
+        print("Calculated CVaR", calculated_cvar)
+        # assert abs(calculated_cvar - self.CVar.X) < 1e-5
         return StochasticSolution(
             zones,
-            [sum(z.scores[s] for z in zones) for s in range(self.num_scenarios)],
-        )
+            scores,
+        ), CGSolveInfo(toc - tic, 0, 0, 0)
 
 
 class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
@@ -368,7 +383,7 @@ class StochasticCGMIPSolver(CGSolver[SZone, StochasticSolution]):
         self.cover_dual_box_sums: BoxDataLookup[float]
 
     def _get_starting_variables(self) -> list[SZone]:
-        return []
+        return [next(z for z in self.all_cg_variables if z.box == self.field.bounding_box())]
 
     def _add_variable_to_objective_and_constraints(self, v: SZone) -> None:
         self.model.chgCoeff(self.limit_constraint, self.cg_X[v], 1)
