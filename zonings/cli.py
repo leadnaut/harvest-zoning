@@ -15,10 +15,7 @@ from zonings.models import (
     CGSolverConfig,
     Field,
     PriceInfo,
-    SField,
-    SZone,
     ScenarioMap,
-    Zone,
     ZoningConfig,
 )
 from zonings.pipelines import (
@@ -204,58 +201,70 @@ def debug3():
 
 @cli.command()
 @click.argument("field_list", type=click.File("r"))
-@click.argument("output_file", type=click.File("w"))
-def grid_search(field_list: io.TextIOWrapper, output_file: io.TextIOWrapper):
+@click.argument("output_path", type=click.Path(dir_okay=False, writable=True, path_type=Path))
+def grid_search(field_list: io.TextIOWrapper, output_path: Path):
     pricing = PriceInfo([0, 0.105, 0.115, 0.13, 0.14], [200, 325, 330, 355, 360])
     fields: list[Field] = []
+
+    pre_calced = set()
+    if output_path.exists():
+        with open(output_path, "r") as output_file:
+            pre_calced_count = 0
+            line_count = 0
+            for line in csv.DictReader(output_file):
+                line_count += 1
+                if float(line["benefit"]) >= 0 and line["timed_out"] == "False":
+                    pre_calced.add(
+                        (str(line["field"]), int(line["min_zone_dim"]), int(line["max_zones"]))
+                    )
+                    pre_calced_count += 1
+        print(f"{pre_calced_count} / {line_count} pre-calced")
+        output_file = open(output_path, "a")
+    else:
+        output_file = open(output_path, "x")
+        output_file.write(
+            "field,average_gpc,min_zone_dim,max_zones,solution,benefit,solve_time,timed_out,zones_used\n"
+        )
+
     for slug in field_list:
         if slug.startswith("#"):
             continue
         field = load_field(slug.strip(), 2)
-        if (
-            field.protein_box_sums[field.bounding_box()]
-            / field.yield_box_sums[field.bounding_box()]
-            >= pricing.protein_minimums[-1]
-        ):
-            print(f"Skipping {slug.strip()} because of average protein content")
-            continue
         fields.append(field)
     print([f.field_id for f in fields])
-    output_file.write(
-        "field,average_gpc,min_zone_dim,max_zones,solution,benefit,solve_time,timed_out,zones_used\n"
-    )
-    line_format = "{id},{gpc:.4f},{min_dim},{max_zones},{sol:.2f},{benefit:.2f},{solve_time:.4f},{timed_out},{zones_used}\n"
-    for min_dimension, max_zones in product(range(1, 20, 2), range(2, 7)):
-        for field in fields:
-            solver = DynamicSolver(
-                field,
-                max_zones,
-                ZoningConfig(min_dimension, min_dimension, pricing),
-                timeout=600,
-            )
-            solution, info = solver.solve()
 
-            gpc = (
-                field.protein_box_sums[field.bounding_box()]
-                / field.yield_box_sums[field.bounding_box()]
+    line_format = "{id},{gpc:.4f},{min_dim},{max_zones},{sol:.2f},{benefit:.2f},{solve_time:.4f},{timed_out},{zones_used}\n"
+    timeout = 1200
+    for min_dimension, max_zones, field in product(range(1, 20, 3), range(2, 7), fields):
+        if (field.field_id, min_dimension, max_zones) in pre_calced:
+            continue
+        solver = DynamicSolver(
+            field, max_zones, ZoningConfig(min_dimension, min_dimension, pricing), timeout=timeout
+        )
+        solution, info = solver.solve()
+
+        gpc = (
+            field.protein_box_sums[field.bounding_box()]
+            / field.yield_box_sums[field.bounding_box()]
+        )
+        benefit = solution.revenue - pricing.calculate_price(
+            gpc, field.yield_box_sums[field.bounding_box()]
+        )
+        output_file.write(
+            line_format.format(
+                id=field.field_id,
+                gpc=gpc,
+                min_dim=min_dimension,
+                max_zones=max_zones,
+                sol=solution.revenue,
+                benefit=benefit,
+                solve_time=info.total_solve_seconds,
+                timed_out=info.total_solve_seconds > timeout,
+                zones_used=len(solution.zones),
             )
-            benefit = solution.revenue - pricing.calculate_price(
-                gpc, field.yield_box_sums[field.bounding_box()]
-            )
-            output_file.write(
-                line_format.format(
-                    id=field.field_id,
-                    gpc=gpc,
-                    min_dim=min_dimension,
-                    max_zones=max_zones,
-                    sol=solution.revenue,
-                    benefit=benefit,
-                    solve_time=info.total_solve_seconds,
-                    timed_out=info.total_solve_seconds > 600,
-                    zones_used=len(solution.zones),
-                )
-            )
-            output_file.flush()
+        )
+        output_file.flush()
+    output_file.close()
 
 
 @cli.command(hidden=True)
@@ -445,21 +454,22 @@ def flatten_zone_test(field_list: Path, output: Path):
 
     with open(field_list, "r") as field_file:
         slugs = [line.strip() for line in field_file if not line.startswith("#")]
-    
+
     if output.exists():
         pre_exists = True
         output_file = open(output, "r")
-        pre_calced = {(str(line['slug']), float(line['alpha'])) for line in csv.DictReader(output_file)}
+        pre_calced = {
+            (str(line["slug"]), float(line["alpha"])) for line in csv.DictReader(output_file)
+        }
         output_file.close()
     else:
         pre_exists = False
         pre_calced = set()
-    
+
     if pre_exists:
         output_file = open(output, "a")
     else:
         output_file = open(output, "x")
-
 
     writer = csv.DictWriter(
         output_file,
@@ -481,18 +491,17 @@ def flatten_zone_test(field_list: Path, output: Path):
         field = load_field(slug, merge_size=2)
         sfield = field_to_sfield(field, YIELD_ERROR_TONNES_PER_HA, GPC_ERROR, N_SCENARIOS)
         scenarios = [
-            ScenarioMap(yields, gpcs)
-            for yields, gpcs in zip(sfield.yield_maps, sfield.gpc_maps)
+            ScenarioMap(yields, gpcs) for yields, gpcs in zip(sfield.yield_maps, sfield.gpc_maps)
         ]
         szones = make_zones(
             sfield, ZoningConfig(minimum_width=3, minimum_height=3, pricing=DEFAULT_PRICING)
         )
         for alpha in ALPHAS:
             if (slug, alpha) in pre_calced:
-                continue    
-            
+                continue
+
             flat_zones = flatten_szones(
-                szones, lambda scores: 0.5 * cvar(alpha, scores) + 0.5 * sum(scores)/len(scores)
+                szones, lambda scores: 0.5 * cvar(alpha, scores) + 0.5 * sum(scores) / len(scores)
             )
 
             sto_sol, sto_info = StochasticMipSolver(
@@ -528,23 +537,24 @@ def flatten_zone_test(field_list: Path, output: Path):
 
 @cli.command()
 @click.argument("field_list", type=click.Path(path_type=Path))
-def field_stats(field_list:Path) -> None:
+def field_stats(field_list: Path) -> None:
     with open(field_list, "r") as field_file:
         slugs = [line.strip() for line in field_file if not line.startswith("#")]
-    
+
     field_area_pixelss = []
     field_area_has = []
     gpcs = []
     for slug in slugs:
-        field = load_field(slug, merge_size=1, skip_init=True)
+        field = load_field(slug, merge_size=2, skip_init=True)
         short_slug = slug.removeprefix("cy2022_")
 
         width_pix, height_pix = field.width, field.height
-        width_km, height_km = map(lambda x: x*field.pixel_size_km, (width_pix, height_pix))
+        width_km, height_km = map(lambda x: x * field.pixel_size_km, (width_pix, height_pix))
 
         field_area_pixels = sum_list_grid(field.field_map)
         field_area_ha = field_area_pixels * field.pixel_area * KM2_TO_HA
-        if field_area_ha > 300: continue
+        if field_area_ha > 300:
+            continue
 
         field_area_has.append(field_area_ha)
         field_area_pixelss.append(field_area_pixels)
@@ -553,34 +563,36 @@ def field_stats(field_list:Path) -> None:
         average_gpc_percent = sum_list_grid(field.gpc_map) / field_area_pixels * 100
         gpcs.append(average_gpc_percent)
 
-        print(f"{short_slug} & ${width_pix}\\times{height_pix}$ & ${width_km:.2f}\\km\\times{height_km:.2f}\\km$ & {field_area_pixels} & {field_area_ha:.2f}ha & {total_yield:.2f}t & {average_gpc_percent:.2f}\\%\\\\")
+        print(
+            f"{short_slug} & ${width_pix}\\times{height_pix}$ & ${width_km:.2f}\\km\\times{height_km:.2f}\\km$ & {field_area_pixels} & {field_area_ha:.2f}ha & {total_yield:.2f}t & {average_gpc_percent:.2f}\\%\\\\"
+        )
 
     areas_and_slugs = list(zip(field_area_has, slugs))
-    data_s_s = set(s for a,s in areas_and_slugs if a < 50)
-    data_s_m = set(s for a,s in areas_and_slugs if 50<= a < 125)
-    data_s_l = set(s for a,s in areas_and_slugs if 125 <= a)
+    data_s_s = set(s for a, s in areas_and_slugs if a < 50)
+    data_s_m = set(s for a, s in areas_and_slugs if 50 <= a < 125)
+    data_s_l = set(s for a, s in areas_and_slugs if 125 <= a)
 
     gpcs_and_slugs = list(zip(gpcs, slugs))
-    data_q_l = set(s for p,s in gpcs_and_slugs if p < 13)
-    data_q_m = set(s for p,s in gpcs_and_slugs if 13 <= p < 14)
-    data_q_h = set(s for p,s in gpcs_and_slugs if 14 < p)
+    data_q_l = set(s for p, s in gpcs_and_slugs if p < 13)
+    data_q_m = set(s for p, s in gpcs_and_slugs if 13 <= p < 14)
+    data_q_h = set(s for p, s in gpcs_and_slugs if 14 < p)
 
-    print("size S", *sorted(data_s_s),sep="\n")
-    print("size M", *sorted(data_s_m),sep="\n")
-    print("size L", *sorted(data_s_l),sep="\n")
+    # print("size S", *sorted(data_s_s),sep="\n")
+    # print("size M", *sorted(data_s_m),sep="\n")
+    # print("size L", *sorted(data_s_l),sep="\n")
 
-    print("gpc L", *sorted(data_q_l),sep="\n")
-    print("gpc M", *sorted(data_q_m),sep="\n")
-    print("gpc H", *sorted(data_q_h),sep="\n")
+    # print("gpc L", *sorted(data_q_l),sep="\n")
+    # print("gpc M", *sorted(data_q_m),sep="\n")
+    # print("gpc H", *sorted(data_q_h),sep="\n")
 
-    for (s, sset), (q, qset) in product(
-        [("s", data_s_s), ("m", data_s_m), ("l", data_s_l)],
-        [("l", data_q_l), ("m", data_q_m), ("h", data_q_h)]
-    ):
-        print(f"size {s} qual {q}: {len(sset & qset)}")
-    
-    plt.hist(gpcs, bins=20)
-    plt.title("Test Data Field Average GPC")
-    plt.xlabel("Average GPC (%)")
-    plt.ylabel("Count")
-    plt.savefig("plots/field_gpcs.png", dpi=200)
+    # for (s, sset), (q, qset) in product(
+    #     [("s", data_s_s), ("m", data_s_m), ("l", data_s_l)],
+    #     [("l", data_q_l), ("m", data_q_m), ("h", data_q_h)]
+    # ):
+    #     print(f"size {s} qual {q}: {len(sset & qset)}")
+
+    # plt.hist(gpcs, bins=20)
+    # plt.title("Test Data Field Average GPC")
+    # plt.xlabel("Average GPC (%)")
+    # plt.ylabel("Count")
+    # plt.savefig("plots/field_gpcs.png", dpi=200)

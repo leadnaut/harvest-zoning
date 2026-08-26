@@ -4,8 +4,7 @@ from typing import Any, Generator, Generic, Optional, TypeVar
 
 import numpy as np
 
-from zonings.utils import subsequence_sums, ListGrid
-
+from zonings.utils import ListGrid, subsequence_sums
 
 
 @dataclass(frozen=True)
@@ -186,7 +185,7 @@ class Field:
             np.multiply(self.yield_map, self.gpc_map).tolist()
         )
         print(f"Finished intializing field {self.field_id}")
-    
+
     @property
     def pixel_area(self) -> float:
         return self.pixel_size_km**2

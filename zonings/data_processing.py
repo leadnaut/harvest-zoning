@@ -52,7 +52,7 @@ def pnormalise_arrays(*arrays: np.ndarray, pad_value: float = 0) -> list[np.ndar
     return result
 
 
-def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
+def _merge_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int, average: bool):
     """
     averages merge_size x merge_size squares in the values array. the mask array
     controls what pixels are counted in the averaging
@@ -72,16 +72,18 @@ def _average_pixels(values: np.ndarray, mask: np.ndarray, merge_size: int):
         ),
         start=np.zeros(merged_shape),
     )
-    counts = sum(
-        (
-            padded_bounds[i::merge_size, j::merge_size]
-            for i in range(merge_size)
-            for j in range(merge_size)
-        ),
-        start=np.zeros(merged_shape),
-    )
+    if average:
+        counts = sum(
+            (
+                padded_bounds[i::merge_size, j::merge_size]
+                for i in range(merge_size)
+                for j in range(merge_size)
+            ),
+            start=np.zeros(merged_shape),
+        )
 
-    return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
+        return np.divide(sums, counts, out=np.zeros_like(sums), where=counts != 0)
+    return sums
 
 
 def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix: str = "") -> Field:
@@ -98,8 +100,8 @@ def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix:
                 ).km
                 / yield_data.width
             )
-            yield_array: np.ndarray = yield_data.read(1)
-            yield_array *= y_pixel_length**2 * KM2_TO_HA
+            yield_array: np.ndarray = yield_data.read(1)  # tonnes per ha
+            yield_array *= y_pixel_length**2 * KM2_TO_HA  # tonnes
     except (FileNotFoundError, RasterioIOError):
         raise FileNotFoundError(f"Couldn't find yield file (looked for {yield_file_path})")
 
@@ -125,8 +127,10 @@ def load_field(slug: str, merge_size: int, skip_init: bool = False, path_prefix:
         yield_array, protein_array = pnormalise_arrays(yield_array, protein_array)
 
     field_map = yield_array > 0.0001
-    merged_yield = _average_pixels(yield_array, field_map, merge_size)
-    merged_protein = _average_pixels(protein_array, field_map, merge_size)
+    merged_yield = _merge_pixels(
+        yield_array, field_map, merge_size, average=False
+    )  # this should be a sum??
+    merged_protein = _merge_pixels(protein_array, field_map, merge_size, average=True)
     merged_pixel_size = y_pixel_length * merge_size
 
     return Field(
